@@ -60,7 +60,7 @@
 </div>
 
 <!-- 删除确认模态框 -->
-<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel">
+<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel" style="z-index: 1060;">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -91,12 +91,24 @@
         });
         
         $('#confirmDelete').click(function() {
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                        xhr.setRequestHeader("X-CSRFToken", $('meta[name=csrf-token]').attr('content'));
+                    }
+                }
+            });
+            
             $.ajax({
                 url: '{{ url_for("admin.delete_user", id=0) }}'.replace('0', userId),
                 type: 'POST',
                 success: function(result) {
                     $('#deleteModal').modal('hide');
                     location.reload();
+                },
+                error: function(xhr, status, error) {
+                    alert('删除失败: ' + error);
+                    $('#deleteModal').modal('hide');
                 }
             });
         });

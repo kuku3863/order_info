@@ -755,210 +755,276 @@ def export_orders():
 @login_required
 def import_orders():
     if request.method == 'POST':
-        if 'file' not in request.files:
-            flash('没有选择文件', 'danger')
-            return redirect(request.url)
-        
-        file = request.files['file']
-        if file.filename == '':
-            flash('没有选择文件', 'danger')
-            return redirect(request.url)
-        
-        filename = file.filename.lower()
-        if file and (filename.endswith('.csv') or filename.endswith('.xlsx')):
-            # 准备导入数据
-            success_count = 0
-            error_count = 0
-            error_messages = []
+        try:
+            if 'file' not in request.files:
+                flash('没有选择文件', 'danger')
+                return redirect(request.url)
             
-            # 获取自定义字段
-            custom_fields = OrderField.query.filter_by(is_default=False).all()
-            custom_field_names = [field.name for field in custom_fields]
+            file = request.files['file']
+            if file.filename == '':
+                flash('没有选择文件', 'danger')
+                return redirect(request.url)
             
-            # 根据文件类型处理数据
-            if filename.endswith('.xlsx'):
-                # 处理Excel文件
-                import openpyxl
-                from io import BytesIO
+            filename = file.filename.lower()
+            if file and (filename.endswith('.csv') or filename.endswith('.xlsx')):
+                # 准备导入数据
+                success_count = 0
+                error_count = 0
+                error_messages = []
                 
-                # 读取Excel文件内容
-                wb = openpyxl.load_workbook(BytesIO(file.read()))
-                ws = wb.active
+                # 获取自定义字段
+                custom_fields = OrderField.query.filter_by(is_default=False).all()
+                custom_field_names = [field.name for field in custom_fields]
                 
-                # 读取表头
-                headers = [cell.value for cell in ws[1]]
-                
-                # 处理每一行数据
-                for i, row in enumerate(ws.iter_rows(min_row=2), start=2):
-                    row_data = [cell.value for cell in row]
+                # 根据文件类型处理数据
+                if filename.endswith('.xlsx'):
+                    # 处理Excel文件
+                    import openpyxl
+                    from io import BytesIO
                     
-                    if not any(row_data):  # 跳过空行
-                        continue
+                    # 读取Excel文件内容
+                    wb = openpyxl.load_workbook(BytesIO(file.read()))
+                    ws = wb.active
                     
-                    # 确保行数据与表头数量一致
-                    while len(row_data) < len(headers):
-                        row_data.append('')
+                    # 读取表头
+                    headers = [cell.value for cell in ws[1]]
                     
-                    try:
-                        if len(row_data) < 10:  # 至少需要10个默认字段（包含手机号和备注）
-                            error_count += 1
-                            error_messages.append(f'第{i}行: 字段数量不足')
+                    # 处理每一行数据
+                    for i, row in enumerate(ws.iter_rows(min_row=2), start=2):
+                        row_data = [cell.value for cell in row]
+                        
+                        if not any(row_data):  # 跳过空行
                             continue
                         
-                        # 查找订单类型
-                        order_type = None
-                        if row_data[1]:  # 订单类型字段
-                            order_type = OrderType.query.filter_by(name=row_data[1]).first()
+                        # 确保行数据与表头数量一致
+                        while len(row_data) < len(headers):
+                            row_data.append('')
                         
-                        # 创建新订单
-                        order = Order(
-                            order_code=row_data[0],
-                            order_type_id=order_type.id if order_type else None,
-                            wechat_name=row_data[2],
-                            wechat_id=row_data[3] if row_data[3] else None,
-                            phone=row_data[4] if row_data[4] else None,
-                            order_info=row_data[5],
-                            completion_time=datetime.strptime(row_data[6], '%Y-%m-%d') if row_data[6] else None,
-                            quantity=int(row_data[7]) if row_data[7] else 0,
-                            amount=float(row_data[8]) if row_data[8] else None,
-                            notes=row_data[9] if row_data[9] else None,
-                            user_id=current_user.id
-                        )
+                        try:
+                            if len(row_data) < 10:  # 至少需要10个默认字段（包含手机号和备注）
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 字段数量不足')
+                                continue
+                            
+                            # 查找订单类型
+                            order_type = None
+                            if row_data[1]:  # 订单类型字段
+                                order_type = OrderType.query.filter_by(name=row_data[1]).first()
+                            
+                            # 验证必填字段
+                            if not row_data[0]:  # 订单编码
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 订单编码不能为空')
+                                continue
+                            
+                            if not row_data[2]:  # 微信名
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 微信名不能为空')
+                                continue
+                            
+                            if not row_data[5]:  # 订单信息
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 订单信息不能为空')
+                                continue
+                            
+                            if not row_data[6]:  # 完成时间
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 完成时间不能为空')
+                                continue
+                            
+                            if not row_data[7]:  # 数量
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 数量不能为空')
+                                continue
+                            
+                            # 检查订单编码是否已存在
+                            existing_order = Order.query.filter_by(order_code=row_data[0]).first()
+                            if existing_order:
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 订单编码 {row_data[0]} 已存在')
+                                continue
+                            
+                            # 处理手机号
+                            phone_value = str(row_data[4]) if row_data[4] else ''
+                            
+                            # 创建新订单
+                            order = Order(
+                                order_code=row_data[0],
+                                order_type_id=order_type.id if order_type else None,
+                                wechat_name=row_data[2],
+                                wechat_id=row_data[3] if row_data[3] else None,
+                                phone=phone_value,
+                                order_info=row_data[5],
+                                completion_time=datetime.strptime(row_data[6], '%Y-%m-%d') if row_data[6] else None,
+                                quantity=int(row_data[7]) if row_data[7] else 0,
+                                amount=float(row_data[8]) if row_data[8] else None,
+                                notes=row_data[9] if row_data[9] else None,
+                                user_id=current_user.id
+                            )
+                            
+                            # 处理自定义字段
+                            for j, field_name in enumerate(headers[10:], start=10):
+                                if j < len(row_data) and field_name in custom_field_names and row_data[j]:
+                                    field = next((f for f in custom_fields if f.name == field_name), None)
+                                    if field:
+                                        if field.field_type == 'number':
+                                            order.set_custom_field(field_name, float(row_data[j]))
+                                        elif field.field_type == 'date':
+                                            order.set_custom_field(field_name, datetime.strptime(row_data[j], '%Y-%m-%d'))
+                                        else:
+                                            order.set_custom_field(field_name, row_data[j])
+                            
+                            db.session.add(order)
+                            success_count += 1
+                            
+                        except Exception as e:
+                            error_count += 1
+                            error_messages.append(f'第{i}行: {str(e)}')
+                
+                elif filename.endswith('.csv'):
+                    # 处理CSV文件
+                    import csv
+                    from io import StringIO
+                    import codecs
+                
+                    # 读取CSV文件，尝试多种编码
+                    encodings = ['utf-8-sig', 'gbk', 'gb2312', 'latin-1']
+                    for encoding in encodings:
+                        try:
+                            # 重置文件指针到开始位置
+                            file.stream.seek(0)
+                            stream = codecs.iterdecode(file.stream, encoding)
+                            # 尝试读取第一行来验证编码
+                            test_reader = csv.reader(stream)
+                            next(test_reader)
+                            
+                            # 如果没有抛出异常，说明编码正确
+                            file.stream.seek(0)
+                            stream = codecs.iterdecode(file.stream, encoding)
+                            reader = csv.reader(stream)
+                            break
+                        except UnicodeDecodeError:
+                            continue
+                    else:
+                        # 如果所有编码都失败
+                        flash('无法识别文件编码，请确保文件使用UTF-8、GBK或GB2312编码，或尝试使用Excel格式', 'danger')
+                        return redirect(request.url)
+                    
+                    # 获取表头
+                    headers = next(reader)
+                    
+                    # 处理每一行数据
+                    for i, row in enumerate(reader, start=2):
+                        if not any(row):  # 跳过空行
+                            continue
                         
-                        # 处理自定义字段
-                        for j, field_name in enumerate(headers[10:], start=10):
-                            if j < len(row_data) and field_name in custom_field_names and row_data[j]:
-                                field = next((f for f in custom_fields if f.name == field_name), None)
-                                if field:
-                                    if field.field_type == 'number':
-                                        order.set_custom_field(field_name, float(row_data[j]))
-                                    elif field.field_type == 'date':
-                                        order.set_custom_field(field_name, datetime.strptime(row_data[j], '%Y-%m-%d'))
-                                    else:
-                                        order.set_custom_field(field_name, row_data[j])
+                        # 确保行数据与表头数量一致
+                        while len(row) < len(headers):
+                            row.append('')
                         
-                        db.session.add(order)
-                        success_count += 1
+                        try:
+                            if len(row) < 10:  # 至少需要10个默认字段（包含手机号和备注）
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 字段数量不足')
+                                continue
+                            
+                            # 查找订单类型
+                            order_type = None
+                            if row[1]:  # 订单类型字段
+                                order_type = OrderType.query.filter_by(name=row[1]).first()
+                            
+                            # 验证必填字段
+                            if not row[0]:  # 订单编码
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 订单编码不能为空')
+                                continue
+                            
+                            if not row[2]:  # 微信名
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 微信名不能为空')
+                                continue
+                            
+                            if not row[5]:  # 订单信息
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 订单信息不能为空')
+                                continue
+                            
+                            if not row[6]:  # 完成时间
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 完成时间不能为空')
+                                continue
+                            
+                            if not row[7]:  # 数量
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 数量不能为空')
+                                continue
+                            
+                            # 检查订单编码是否已存在
+                            existing_order = Order.query.filter_by(order_code=row[0]).first()
+                            if existing_order:
+                                error_count += 1
+                                error_messages.append(f'第{i}行: 订单编码 {row[0]} 已存在')
+                                continue
+                            
+                            # 处理手机号
+                            phone_value = str(row[4]) if row[4] else ''
+                            
+                            # 创建新订单
+                            order = Order(
+                                order_code=row[0],
+                                order_type_id=order_type.id if order_type else None,
+                                wechat_name=row[2],
+                                wechat_id=row[3] if row[3] else None,
+                                phone=phone_value,
+                                order_info=row[5],
+                                completion_time=datetime.strptime(row[6], '%Y-%m-%d') if row[6] else None,
+                                quantity=int(row[7]) if row[7] else 0,
+                                amount=float(row[8]) if row[8] else None,
+                                notes=row[9] if row[9] else None,
+                                user_id=current_user.id
+                            )
+                            
+                            # 处理自定义字段
+                            for j, field_name in enumerate(headers[10:], start=10):
+                                if j < len(row) and field_name in custom_field_names and row[j]:
+                                    field = next((f for f in custom_fields if f.name == field_name), None)
+                                    if field:
+                                        if field.field_type == 'number':
+                                            order.set_custom_field(field_name, float(row[j]))
+                                        elif field.field_type == 'date':
+                                            order.set_custom_field(field_name, datetime.strptime(row[j], '%Y-%m-%d'))
+                                        else:
+                                            order.set_custom_field(field_name, row[j])
+                            
+                            db.session.add(order)
+                            success_count += 1
                         
-                    except Exception as e:
-                        error_count += 1
-                        error_messages.append(f'第{i}行: {str(e)}')
+                        except Exception as e:
+                            error_count += 1
+                            error_messages.append(f'第{i}行: {str(e)}')
+                
+                # 处理导入结果
+                if success_count > 0:
+                    db.session.commit()
+                    flash(f'成功导入{success_count}条订单记录', 'success')
+                
+                if error_count > 0:
+                    flash(f'导入过程中有{error_count}条记录出错', 'warning')
+                    for msg in error_messages[:10]:  # 只显示前10条错误信息
+                        flash(msg, 'danger')
+                    if len(error_messages) > 10:
+                        flash(f'... 还有 {len(error_messages) - 10} 条错误信息未显示', 'info')
+                
+                return redirect(url_for('main.order_list'))
             else:
-                # 处理CSV文件
-                import csv
-                from io import StringIO
-                import codecs
-                
-                # 读取CSV文件，尝试多种编码
-                encodings = ['utf-8-sig', 'gbk', 'gb2312', 'latin-1']
-                for encoding in encodings:
-                    try:
-                        # 重置文件指针到开始位置
-                        file.stream.seek(0)
-                        stream = codecs.iterdecode(file.stream, encoding)
-                        # 尝试读取第一行来验证编码
-                        test_reader = csv.reader(stream)
-                        next(test_reader)
-                        
-                        # 如果没有抛出异常，说明编码正确
-                        file.stream.seek(0)
-                        stream = codecs.iterdecode(file.stream, encoding)
-                        reader = csv.reader(stream)
-                        break
-                    except UnicodeDecodeError:
-                        continue
-                else:
-                    # 如果所有编码都失败
-                    flash('无法识别文件编码，请确保文件使用UTF-8、GBK或GB2312编码，或尝试使用Excel格式', 'danger')
-                    return redirect(request.url)
-                
-                # 获取表头
-                headers = next(reader)
-                
-                # 处理每一行数据
-                for i, row in enumerate(reader, start=2):
-                    if not any(row):  # 跳过空行
-                        continue
-                    
-                    # 确保行数据与表头数量一致
-                    while len(row) < len(headers):
-                        row.append('')
-                    
-                    try:
-                        if len(row) < 10:  # 至少需要10个默认字段（包含手机号和备注）
-                            error_count += 1
-                            error_messages.append(f'第{i}行: 字段数量不足')
-                            continue
-                        
-                        # 查找订单类型
-                        order_type = None
-                        if row[1]:  # 订单类型字段
-                            order_type = OrderType.query.filter_by(name=row[1]).first()
-                        
-                        # 创建新订单
-                        order = Order(
-                            order_code=row[0],
-                            order_type_id=order_type.id if order_type else None,
-                            wechat_name=row[2],
-                            wechat_id=row[3] if row[3] else None,
-                            phone=row[4] if row[4] else None,
-                            order_info=row[5],
-                            completion_time=datetime.strptime(row[6], '%Y-%m-%d') if row[6] else None,
-                            quantity=int(row[7]) if row[7] else 0,
-                            amount=float(row[8]) if row[8] else None,
-                            notes=row[9] if row[9] else None,
-                            user_id=current_user.id
-                        )
-                        
-                        # 处理自定义字段
-                        for j, field_name in enumerate(headers[10:], start=10):
-                            if j < len(row) and field_name in custom_field_names and row[j]:
-                                field = next((f for f in custom_fields if f.name == field_name), None)
-                                if field:
-                                    if field.field_type == 'number':
-                                        order.set_custom_field(field_name, float(row[j]))
-                                    elif field.field_type == 'date':
-                                        order.set_custom_field(field_name, datetime.strptime(row[j], '%Y-%m-%d'))
-                                    else:
-                                        order.set_custom_field(field_name, row[j])
-                        
-                        db.session.add(order)
-                        success_count += 1
-                        
-                    except Exception as e:
-                        error_count += 1
-                        error_messages.append(f'第{i}行: {str(e)}')
-            
-            if success_count > 0:
-                db.session.commit()
-                flash(f'成功导入{success_count}条订单记录', 'success')
-            
-            if error_count > 0:
-                flash(f'导入过程中有{error_count}条记录出错', 'warning')
-                for msg in error_messages[:10]:  # 只显示前10条错误信息
-                    flash(msg, 'danger')
-                if len(error_messages) > 10:
-                    flash(f'... 还有 {len(error_messages) - 10} 条错误信息未显示', 'info')
-            
-            return redirect(url_for('main.order_list'))
-        else:
-            flash('请上传CSV或Excel(XLSX)格式的文件', 'danger')
+                flash('请上传CSV或Excel(XLSX)格式的文件', 'danger')
+                return redirect(request.url)
+        except Exception as e:
+            current_app.logger.error(f"导入订单时发生错误: {str(e)}")
+            flash(f'导入过程中发生错误: {str(e)}', 'danger')
+            return redirect(request.url)
     
     return render_template('main/import_orders.html')
-    
-    # 删除关联的图片文件
-    for image in order.images:
-        try:
-            file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], image.image_path.replace('uploads/', ''))
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception as e:
-            current_app.logger.error(f"删除图片文件失败: {e}")
-    
-    db.session.delete(order)
-    db.session.commit()
-    flash('订单已删除')
-    return redirect(url_for('main.order_list'))
 
 @main.route('/order/image/delete/<int:id>', methods=['POST'])
 @login_required

@@ -37,6 +37,7 @@
             </div>
             <div class="panel-body">
                 <form method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="form-group">
                         <label for="file">选择Excel或CSV文件</label>
                         <input type="file" class="form-control-file" id="file" name="file" accept=".xlsx,.csv" required>
