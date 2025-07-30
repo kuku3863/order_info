@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}查看订单{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>订单详情</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h3 class="panel-title">订单信息</h3>
+                    </div>
+                    <div class="col-md-4 text-right">
+                        <a href="{{ url_for('main.edit_order', id=order.id) }}" class="btn btn-primary btn-sm">编辑订单</a>
+                        <button class="btn btn-danger btn-sm" id="deleteOrder">删除订单</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>订单编码：</strong>{{ order.order_code }}</p>
+                        <p><strong>订单类型：</strong>{{ order.order_type.name if order.order_type else '未分类' }}</p>
+                        <p><strong>微信名：</strong>{{ order.wechat_name }}</p>
+                        <p><strong>微信号：</strong>{{ order.wechat_id }}</p>
+                        <p><strong>完成时间：</strong>{{ order.completion_time.strftime('%Y-%m-%d') if order.completion_time else '' }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>数量：</strong>{{ order.quantity }}</p>
+                        <p><strong>金额：</strong>{{ order.amount }}</p>
+                        <p><strong>创建时间：</strong>{{ order.create_time.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                        <p><strong>创建者：</strong>{{ order.creator.username if order.creator else '' }}</p>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row">
+                    <div class="col-md-12">
+                        <p><strong>订单信息：</strong></p>
+                        <div class="well">{{ order.order_info | nl2br }}</div>
+                    </div>
+                </div>
+                
+                <!-- 自定义字段 -->
+                {% if custom_fields %}
+                <hr>
+                <div class="row">
+                    <div class="col-md-12">
+                        <h4>自定义字段</h4>
+                    </div>
+                    {% for field in custom_fields %}
+                     {% set field_value = order.get_custom_field(field.name) %}
+                     {% if field_value %}
+                     <div class="col-md-6">
+                         <p><strong>{{ field.name }} <small class="text-muted">({% if field.field_type == 'text' %}文本{% elif field.field_type == 'number' %}数字{% elif field.field_type == 'date' %}日期{% elif field.field_type == 'image' %}图片{% else %}{{ field.field_type }}{% endif %})</small>：</strong>{{ field_value }}</p>
+                     </div>
+                     {% endif %}
+                     {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- 图片 -->
+                {% if order.images.count() > 0 %}
+                <hr>
+                <div class="row">
+                    <div class="col-md-12">
+                        <h4>订单图片</h4>
+                    </div>
+                </div>
+                <div class="row">
+                    {% for image in order.images %}
+                    <div class="col-md-3">
+                        <div class="thumbnail">
+                            <a href="{{ url_for('main.uploaded_file', filename=image.image_path) }}" target="_blank">
+                                <img src="{{ url_for('main.uploaded_file', filename=image.image_path) }}" alt="订单图片" class="img-responsive">
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="panel-footer">
+                <a href="{{ url_for('main.order_list') }}" class="btn btn-default">返回列表</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认模态框 -->
+<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title" id="deleteModalLabel">确认删除</h4>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除这个订单吗？此操作不可恢复。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">删除</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    $(document).ready(function() {
+        $('#deleteOrder').click(function() {
+            $('#deleteModal').modal('show');
+        });
+        
+        $('#confirmDelete').click(function() {
+            $.ajax({
+                url: '{{ url_for("main.delete_order", id=order.id) }}',
+                type: 'POST',
+                success: function(result) {
+                    window.location.href = '{{ url_for("main.order_list") }}';
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

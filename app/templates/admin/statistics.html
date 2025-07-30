@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block title %}数据统计{% endblock %}
+
+{% block head %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>数据统计</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">日期范围选择</h3>
+            </div>
+            <div class="panel-body">
+                <form method="post" class="form-inline">
+                    {{ form.hidden_tag() }}
+                    <div class="form-group">
+                        {{ form.start_date.label }} {{ form.start_date(class="form-control") }}
+                    </div>
+                    <div class="form-group">
+                        {{ form.end_date.label }} {{ form.end_date(class="form-control") }}
+                    </div>
+                    {{ form.submit(class="btn btn-primary") }}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">订单数量统计</h3>
+            </div>
+            <div class="panel-body">
+                <canvas id="orderCountChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">订单金额统计</h3>
+            </div>
+            <div class="panel-body">
+                <canvas id="orderAmountChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">总体统计</h3>
+            </div>
+            <div class="panel-body">
+                <table class="table table-bordered">
+                    <tbody>
+                        <tr>
+                            <th>总订单数</th>
+                            <td>{{ total_stats.total_orders }}</td>
+                        </tr>
+                        <tr>
+                            <th>总金额</th>
+                            <td>{{ total_stats.total_amount }}</td>
+                        </tr>
+                        <tr>
+                            <th>总数量</th>
+                            <td>{{ total_stats.total_quantity }}</td>
+                        </tr>
+                        <tr>
+                            <th>平均订单金额</th>
+                            <td>{{ "%.2f"|format(total_stats.avg_amount) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">用户统计</h3>
+            </div>
+            <div class="panel-body">
+                <table class="table table-bordered table-striped">
+                    <thead>
+                        <tr>
+                            <th>用户</th>
+                            <th>订单数</th>
+                            <th>总金额</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for username, stats in user_stats.items() %}
+                        <tr>
+                            <td>{{ username }}</td>
+                            <td>{{ stats.count }}</td>
+                            <td>{{ stats.total_amount }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center">暂无数据</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">每日订单统计</h3>
+            </div>
+            <div class="panel-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>订单数</th>
+                                <th>总金额</th>
+                                <th>总数量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for date, stats in daily_stats.items() %}
+                            <tr>
+                                <td>{{ date }}</td>
+                                <td>{{ stats.count }}</td>
+                                <td>{{ stats.total_amount }}</td>
+                                <td>{{ stats.total_quantity }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center">暂无数据</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    $(document).ready(function() {
+        var chartData = {{ chart_data|safe }};
+        
+        // 订单数量图表
+        var countCtx = document.getElementById('orderCountChart').getContext('2d');
+        var countChart = new Chart(countCtx, {
+            type: 'line',
+            data: {
+                labels: chartData.dates,
+                datasets: [{
+                    label: '订单数量',
+                    data: chartData.counts,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 订单金额图表
+        var amountCtx = document.getElementById('orderAmountChart').getContext('2d');
+        var amountChart = new Chart(amountCtx, {
+            type: 'bar',
+            data: {
+                labels: chartData.dates,
+                datasets: [{
+                    label: '订单金额',
+                    data: chartData.amounts,
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,142 @@
+{% extends "bootstrap/base.html" %}
+
+{% block title %}订单管理系统{% endblock %}
+
+{% block head %}
+{{ super() }}
+<meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
+<link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+{% endblock %}
+
+{% block navbar %}
+<div class="navbar navbar-inverse" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="{{ url_for('main.index') }}">订单管理系统</a>
+        </div>
+        <div class="navbar-collapse collapse">
+            <ul class="nav navbar-nav">
+                {% if current_user.is_authenticated %}
+                <li><a href="{{ url_for('main.order_list') }}">订单列表</a></li>
+                <li><a href="{{ url_for('main.new_order') }}">新建订单</a></li>
+                <li><a href="{{ url_for('main.import_orders') }}">批量导入</a></li>
+                {% if current_user.can(Permission.MANAGE_FIELDS) %}
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown">管理 <b class="caret"></b></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="{{ url_for('main.order_statistics') }}">数据统计</a></li>
+                        <li><a href="{{ url_for('admin.field_list') }}">字段管理</a></li>
+                        {% if current_user.can(Permission.ADMIN) %}
+                        <li><a href="{{ url_for('admin.order_type_list') }}">订单类型管理</a></li>
+                        <li><a href="{{ url_for('admin.user_list') }}">用户管理</a></li>
+                        <li><a href="{{ url_for('admin.wechat_user_list') }}">微信用户管理</a></li>
+                        <li class="divider"></li>
+                        <li><a href="#" onclick="backupDatabase(); return false;"><i class="fa fa-database"></i> 数据库备份</a></li>
+                        {% endif %}
+                    </ul>
+                </li>
+                {% endif %}
+                {% endif %}
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                {% if current_user.is_authenticated %}
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown">{{ current_user.username }} <b class="caret"></b></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="{{ url_for('auth.change_password') }}">修改密码</a></li>
+                        <li><a href="{{ url_for('auth.logout') }}">退出登录</a></li>
+                    </ul>
+                </li>
+                {% else %}
+                <li><a href="{{ url_for('auth.login') }}">登录</a></li>
+                <li><a href="{{ url_for('auth.register') }}">注册</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    {% for message in get_flashed_messages() %}
+    <div class="alert alert-warning alert-auto-dismiss">
+        <button type="button" class="close" data-dismiss="alert">&times;</button>
+        {{ message }}
+    </div>
+    {% endfor %}
+
+    {% block page_content %}{% endblock %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+$(document).ready(function() {
+    // 自动消失flash消息
+    $('.alert-auto-dismiss').each(function() {
+        var $alert = $(this);
+        // 3秒后自动消失
+        setTimeout(function() {
+            $alert.fadeOut(500, function() {
+                $alert.remove();
+            });
+        }, 3000); // 3秒
+    });
+});
+
+// 备份数据库函数
+function backupDatabase() {
+    if (!confirm('确定要备份数据库吗？')) {
+        return;
+    }
+    
+    // 显示加载提示
+    var loadingAlert = $('<div class="alert alert-info alert-dismissible"><button type="button" class="close" data-dismiss="alert">&times;</button>正在备份数据库，请稍候...</div>');
+    $('.container').first().prepend(loadingAlert);
+    
+    fetch('/backup/database', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': $('meta[name=csrf-token]').attr('content')
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('网络响应错误');
+        }
+        return response.json();
+    })
+    .then(data => {
+        // 确保移除加载提示
+        if (loadingAlert && loadingAlert.length) {
+            loadingAlert.remove();
+        }
+        if (data.success) {
+            alert(`备份成功！\n备份文件：${data.backup_file}\n文件大小：${data.backup_size}\n备份时间：${data.timestamp}`);
+        } else {
+            alert('备份失败：' + data.error);
+        }
+    })
+    .catch(error => {
+        // 确保移除加载提示
+        if (loadingAlert && loadingAlert.length) {
+            loadingAlert.remove();
+        }
+        console.error('Error:', error);
+        alert('备份失败：' + error.message);
+    });
+}
+</script>
+{% endblock %}

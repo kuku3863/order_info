@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block title %}{% if order %}编辑订单{% else %}新建订单{% endif %}{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>{% if order %}编辑订单{% else %}新建订单{% endif %}</h1>
+</div>
+
+<style>
+.required-field label:after {
+    content: " *";
+    color: red;
+    font-weight: bold;
+}
+.help-block {
+    color: #737373;
+    font-size: 12px;
+    margin-top: 5px;
+}
+</style>
+
+<div class="row">
+    <div class="col-md-8">
+        <form method="post" enctype="multipart/form-data" class="form" role="form">
+            {{ form.hidden_tag() }}
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group required-field">
+                        {{ form.order_code.label(class="control-label") }}
+                        {{ form.order_code(class="form-control") }}
+                        {% if form.order_code.errors %}
+                            <div class="text-danger">{{ form.order_code.errors[0] }}</div>
+                        {% endif %}
+                        <div class="help-block">订单的唯一标识码</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group required-field">
+                        {{ form.completion_time.label(class="control-label") }}
+                        {{ form.completion_time(class="form-control") }}
+                        {% if form.completion_time.errors %}
+                            <div class="text-danger">{{ form.completion_time.errors[0] }}</div>
+                        {% endif %}
+                        <div class="help-block">订单完成的日期</div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group required-field">
+                        {{ form.wechat_name.label(class="control-label") }}
+                        {{ form.wechat_name(class="form-control") }}
+                        {% if form.wechat_name.errors %}
+                            <div class="text-danger">{{ form.wechat_name.errors[0] }}</div>
+                        {% endif %}
+                        <div class="help-block">客户的微信昵称</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        {{ form.wechat_id.label(class="control-label") }}
+                        {{ form.wechat_id(class="form-control") }}
+                        {% if form.wechat_id.errors %}
+                            <div class="text-danger">{{ form.wechat_id.errors[0] }}</div>
+                        {% endif %}
+                        <div class="help-block">客户的微信号（可选）</div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group required-field">
+                        {{ form.phone.label(class="control-label") }}
+                        {{ form.phone(class="form-control") }}
+                        {% if form.phone.errors %}
+                            <div class="text-danger">{{ form.phone.errors[0] }}</div>
+                        {% endif %}
+                        <div class="help-block">客户的手机号码</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group required-field">
+                        {{ form.quantity.label(class="control-label") }}
+                        {{ form.quantity(class="form-control") }}
+                        {% if form.quantity.errors %}
+                            <div class="text-danger">{{ form.quantity.errors[0] }}</div>
+                        {% endif %}
+                        <div class="help-block">订单商品数量</div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        {{ form.amount.label(class="control-label") }}
+                        {{ form.amount(class="form-control") }}
+                        {% if form.amount.errors %}
+                            <div class="text-danger">{{ form.amount.errors[0] }}</div>
+                        {% endif %}
+                        <div class="help-block">订单金额（可选）</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <!-- 空列，保持布局平衡 -->
+                </div>
+            </div>
+            <div class="form-group required-field">
+                {{ form.order_type_id.label(class="control-label") }}
+                {{ form.order_type_id(class="form-control") }}
+                {% if form.order_type_id.errors %}
+                    <div class="text-danger">{{ form.order_type_id.errors[0] }}</div>
+                {% endif %}
+                <div class="help-block">选择订单所属类型</div>
+            </div>
+            <div class="form-group required-field">
+                {{ form.order_info.label(class="control-label") }}
+                {{ form.order_info(class="form-control", rows="4") }}
+                {% if form.order_info.errors %}
+                    <div class="text-danger">{{ form.order_info.errors[0] }}</div>
+                {% endif %}
+                <div class="help-block">详细的订单信息描述</div>
+            </div>
+            <div class="form-group">
+                {{ form.notes.label(class="control-label") }}
+                {{ form.notes(class="form-control", rows="3") }}
+                {% if form.notes.errors %}
+                    <div class="text-danger">{{ form.notes.errors[0] }}</div>
+                {% endif %}
+                <div class="help-block">订单备注信息（可选）</div>
+            </div>
+            
+            <!-- 自定义字段 -->
+            {% for field in form %}
+                {% if field.name not in ['csrf_token', 'order_code', 'wechat_name', 'wechat_id', 'phone', 'order_info', 'notes', 'completion_time', 'quantity', 'amount', 'order_type_id', 'images', 'submit'] %}
+                    {% set is_required = field.flags.required %}
+                    <div class="form-group {% if is_required %}required-field{% endif %}">
+                        {{ field.label(class="control-label") }}
+                        {% if field.type == 'TextAreaField' %}
+                            {{ field(class="form-control", rows="3") }}
+                        {% else %}
+                            {{ field(class="form-control") }}
+                        {% endif %}
+                        {% if field.errors %}
+                            <div class="text-danger">{{ field.errors[0] }}</div>
+                        {% endif %}
+                        {% if is_required %}
+                            <div class="help-block">此字段为必填项</div>
+                        {% else %}
+                            <div class="help-block">此字段为可选项</div>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+            
+            <div class="form-group">
+                <label for="images" class="control-label">
+                    <i class="glyphicon glyphicon-picture"></i> 图片上传
+                </label>
+                <input type="file" id="images" name="images" multiple accept="image/*" class="form-control">
+                <div class="help-block">
+                    <i class="glyphicon glyphicon-info-sign"></i> 
+                    可以选择多张图片上传（支持jpg, jpeg, png, gif格式）<br>
+                    <small class="text-muted">图片将保存到：D:\订单查询系统\图片</small>
+                </div>
+            </div>
+            
+            {% if order %}
+            <div class="form-group">
+                <label>已上传图片</label>
+                <div class="row">
+                    {% for image in order.images %}
+                    <div class="col-md-3 image-container" id="image-{{ image.id }}">
+                        <div class="thumbnail">
+                            <img src="{{ url_for('main.uploaded_file', filename=image.image_path) }}" alt="订单图片" class="img-responsive">
+                            <div class="caption text-center">
+                                <button type="button" class="btn btn-danger btn-xs delete-image" data-id="{{ image.id }}">删除</button>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="col-md-12">
+                        <p>暂无图片</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="form-group">
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('main.order_list') }}" class="btn btn-default">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    $(document).ready(function() {
+        // 获取CSRF token
+        var csrfToken = $('meta[name=csrf-token]').attr('content');
+        if (!csrfToken) {
+            csrfToken = $('input[name="csrf_token"]').val();
+        }
+        
+        $('.delete-image').click(function() {
+            var imageId = $(this).data('id');
+            if (confirm('确定要删除这张图片吗？')) {
+                $.ajax({
+                    url: '{{ url_for("main.delete_image", id=0) }}'.replace('0', imageId),
+                    type: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    success: function(result) {
+                        if (result.success) {
+                            $('#image-' + imageId).remove();
+                            alert('图片删除成功！');
+                        } else {
+                            alert('删除失败：' + (result.error || '未知错误'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.log('删除图片失败:', xhr.responseText);
+                        alert('删除失败，请检查网络连接或联系管理员');
+                    }
+                });
+            }
+        });
+    });
+</script>
+{% endblock %}

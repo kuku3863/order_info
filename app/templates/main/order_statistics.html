@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+
+{% block title %}数据统计{% endblock %}
+
+{% block page_content %}
+<div class="page-header statistics-header">
+    <h1><i class="fa fa-bar-chart"></i> 数据统计 <small class="admin-badge">超级管理员专用</small></h1>
+    <p class="lead">全面掌握订单数据，洞察业务趋势</p>
+</div>
+
+<!-- 筛选表单 -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">筛选条件</h3>
+            </div>
+            <div class="panel-body">
+                <form method="GET" class="form-inline">
+                    <div class="form-group">
+                        <label for="user_id">提交用户：</label>
+                        <select name="user_id" id="user_id" class="form-control">
+                            <option value="">全部用户</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}" {% if current_filters.user_id == user.id %}selected{% endif %}>
+                                {{ user.username }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="start_date">开始日期：</label>
+                        <input type="date" name="start_date" id="start_date" class="form-control" 
+                               value="{{ current_filters.start_date or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="end_date">结束日期：</label>
+                        <input type="date" name="end_date" id="end_date" class="form-control" 
+                               value="{{ current_filters.end_date or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="search_type">搜索类型：</label>
+                        <select name="search_type" id="search_type" class="form-control">
+                            <option value="wechat_name" {{ 'selected' if current_filters.search_type == 'wechat_name' or not current_filters.search_type else '' }}>微信名</option>
+                            <option value="wechat_id" {{ 'selected' if current_filters.search_type == 'wechat_id' else '' }}>微信号</option>
+                            <option value="phone" {{ 'selected' if current_filters.search_type == 'phone' else '' }}>手机号</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="search_value">搜索内容：</label>
+                        <input type="text" name="search_value" id="search_value" class="form-control" 
+                               placeholder="输入搜索内容" value="{{ current_filters.search_value or '' }}">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">统计</button>
+                    <a href="{{ url_for('main.order_statistics') }}" class="btn btn-default">重置</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 总体统计 -->
+<div class="row statistics-cards">
+    <div class="col-md-4">
+        <div class="stats-card stats-card-primary">
+            <div class="stats-icon">
+                <i class="fa fa-shopping-cart"></i>
+            </div>
+            <div class="stats-content">
+                <div class="stats-number">{{ total_orders }}</div>
+                <div class="stats-label">订单总数</div>
+                <div class="stats-description">累计处理订单</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stats-card stats-card-success">
+            <div class="stats-icon">
+                <i class="fa fa-money"></i>
+            </div>
+            <div class="stats-content">
+                <div class="stats-number">￥{{ "%.2f"|format(total_amount) }}</div>
+                <div class="stats-label">总金额</div>
+                <div class="stats-description">累计收入金额</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stats-card stats-card-info">
+            <div class="stats-icon">
+                <i class="fa fa-calculator"></i>
+            </div>
+            <div class="stats-content">
+                <div class="stats-number">￥{{ "%.2f"|format(avg_amount) }}</div>
+                <div class="stats-label">平均金额</div>
+                <div class="stats-description">单笔订单均值</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 按用户统计 -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">按用户统计</h3>
+            </div>
+            <div class="panel-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>用户名</th>
+                                <th>订单数量</th>
+                                <th>总金额</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in user_stats %}
+                            <tr>
+                                <td>{{ stat.username }}</td>
+                                <td><span class="badge">{{ stat.order_count }}</span></td>
+                                <td class="text-success">￥{{ "%.2f"|format(stat.total_amount or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center">暂无数据</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 按订单类型统计 -->
+    <div class="col-md-6">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">按订单类型统计</h3>
+            </div>
+            <div class="panel-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>订单类型</th>
+                                <th>订单数量</th>
+                                <th>总金额</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in type_stats %}
+                            <tr>
+                                <td>{{ stat.name or '未分类' }}</td>
+                                <td><span class="badge">{{ stat.order_count }}</span></td>
+                                <td class="text-success">￥{{ "%.2f"|format(stat.total_amount or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center">暂无数据</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 按微信用户统计（Top 10） -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="panel panel-default ranking-panel">
+            <div class="panel-heading">
+                <h3 class="panel-title"><i class="fa fa-trophy"></i> 微信用户排行榜 (Top 10)</h3>
+                <p class="panel-subtitle">
+                    {% if current_filters.sort_by == 'count' %}
+                        根据订单数量排序的活跃客户
+                    {% else %}
+                        根据订单金额排序的优质客户
+                    {% endif %}
+                </p>
+                <div class="btn-group pull-right" style="margin-top: -35px;">
+                    <a href="{{ url_for('main.order_statistics', sort_by='amount', user_id=current_filters.user_id, start_date=current_filters.start_date, end_date=current_filters.end_date, search_type=current_filters.search_type, search_value=current_filters.search_value) }}" 
+                       class="btn btn-sm {% if current_filters.sort_by != 'count' %}btn-primary{% else %}btn-default{% endif %}">
+                        <i class="fa fa-yen"></i> 按金额排序
+                    </a>
+                    <a href="{{ url_for('main.order_statistics', sort_by='count', user_id=current_filters.user_id, start_date=current_filters.start_date, end_date=current_filters.end_date, search_type=current_filters.search_type, search_value=current_filters.search_value) }}" 
+                       class="btn btn-sm {% if current_filters.sort_by == 'count' %}btn-primary{% else %}btn-default{% endif %}">
+                        <i class="fa fa-list-ol"></i> 按数量排序
+                    </a>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="table-responsive">
+                    <table class="table table-striped ranking-table">
+                        <thead>
+                            <tr>
+                                <th width="10%">排名</th>
+                                <th width="40%">微信用户</th>
+                                <th width="25%">订单数量</th>
+                                <th width="25%">总金额</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in wechat_stats %}
+                            <tr class="ranking-row {% if loop.index <= 3 %}top-rank{% endif %}">
+                                <td>
+                                    {% if loop.index == 1 %}
+                                        <span class="rank-badge rank-gold"><i class="fa fa-trophy"></i> 1</span>
+                                    {% elif loop.index == 2 %}
+                                        <span class="rank-badge rank-silver"><i class="fa fa-medal"></i> 2</span>
+                                    {% elif loop.index == 3 %}
+                                        <span class="rank-badge rank-bronze"><i class="fa fa-award"></i> 3</span>
+                                    {% else %}
+                                        <span class="rank-number">{{ loop.index }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="user-name">{{ stat.wechat_name }}</td>
+                                <td><span class="badge badge-primary">{{ stat.order_count }}</span></td>
+                                <td class="amount-cell">￥{{ "%.2f"|format(stat.total_amount or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center empty-data">
+                                    <i class="fa fa-inbox"></i><br>
+                                    暂无数据
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <a href="{{ url_for('main.order_list') }}" class="btn btn-default">返回订单列表</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    $(document).ready(function() {
+        // 自动提交表单当选择改变时
+        $('#user_id').change(function() {
+            if ($(this).val()) {
+                $(this).closest('form').submit();
+            }
+        });
+     });
+</script>
+{% endblock %}

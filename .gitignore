@@ -1,0 +1,97 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+PIPFILE.lock
+
+# Flask
+instance/
+.webassets-cache
+
+# Environment variables
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Database files
+*.sqlite
+*.db
+data*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Uploads
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+
+# Backup files
+*.bak
+*.backup
+data_backup_*.sqlite
+
+# Archive files
+*.zip
+*.7z
+*.rar
+*.tar.gz
+
+# Batch files (可选，根据需要)
+*.bat
+
+# Database files
+*.sqlite
+*.db
+data*.sqlite
+data-*.sqlite
+
+# Instance folder
+instance/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Migration files (可选，如果不想同步迁移历史)
+# migrations/versions/
+
+# Config files with sensitive data
+config_local.py

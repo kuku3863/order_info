@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}{% if order_type %}编辑订单类型{% else %}新增订单类型{% endif %}{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>{% if order_type %}编辑订单类型{% else %}新增订单类型{% endif %}</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">订单类型信息</h3>
+            </div>
+            <div class="panel-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="form-group">
+                        <label for="name">类型名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ order_type.name if order_type else '' }}" 
+                               placeholder="请输入订单类型名称" required>
+                        <p class="help-block">例如：灯箱、海报、三折页、详情页等</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="description">描述</label>
+                        <textarea class="form-control" id="description" name="description" 
+                                  rows="3" placeholder="请输入订单类型描述（可选）">{{ order_type.description if order_type else '' }}</textarea>
+                        <p class="help-block">对该订单类型的详细说明</p>
+                    </div>
+                    
+                    {% if order_type %}
+                    <div class="form-group">
+                        <div class="checkbox">
+                            <label>
+                                <input type="checkbox" name="is_active" 
+                                       {% if order_type.is_active %}checked{% endif %}>
+                                启用该订单类型
+                            </label>
+                        </div>
+                        <p class="help-block">禁用后，用户将无法选择该订单类型</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="glyphicon glyphicon-ok"></i> 
+                            {% if order_type %}更新{% else %}创建{% endif %}
+                        </button>
+                        <a href="{{ url_for('admin.order_type_list') }}" class="btn btn-default">
+                            <i class="glyphicon glyphicon-arrow-left"></i> 返回列表
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="panel panel-info">
+            <div class="panel-heading">
+                <h3 class="panel-title">说明</h3>
+            </div>
+            <div class="panel-body">
+                <h5>订单类型管理</h5>
+                <p>订单类型用于分类管理不同类型的订单，便于统计和查询。</p>
+                
+                <h5>注意事项</h5>
+                <ul>
+                    <li>类型名称不能重复</li>
+                    <li>已有订单的类型不能删除</li>
+                    <li>禁用的类型用户无法选择</li>
+                    <li>建议设置清晰的类型描述</li>
+                </ul>
+                
+                {% if order_type and order_type.orders.count() > 0 %}
+                <div class="alert alert-warning">
+                    <strong>提醒：</strong>该订单类型下有 {{ order_type.orders.count() }} 个订单，删除前请先处理相关订单。
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

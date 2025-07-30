@@ -1,0 +1,1221 @@
+/* 全局样式 */
+body {
+    font-family: 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    background-color: #ffffff;
+    color: #333;
+    min-height: 100vh;
+}
+
+
+
+
+
+/* 主要容器样式 */
+.container {
+    position: relative;
+    z-index: 1;
+    background-color: transparent;
+    padding: 15px 10px;
+    margin-top: 20px;
+}
+
+/* 修复模态框层级问题 */
+.modal {
+    z-index: 1050 !important;
+}
+
+.modal-backdrop {
+    z-index: 1040 !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    background-color: transparent !important;
+}
+
+.modal-dialog {
+    z-index: 1060 !important;
+    pointer-events: auto !important;
+}
+
+.modal-content {
+    pointer-events: auto !important;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 15px 5px;
+    }
+}
+
+/* 确保容器不会遮挡下拉菜单 */
+.container:not(.navbar .container) {
+    z-index: 1;
+}
+
+/* 主要内容区域样式 */
+.well {
+    background-color: #f5f5f5;
+    border: 1px solid #e3e3e3;
+    border-radius: 4px;
+    box-shadow: inset 0 1px 1px rgba(0,0,0,.05);
+}
+
+.jumbotron {
+    background-color: #eee;
+    border-radius: 6px;
+}
+
+/* 表格容器样式 */
+.table-responsive {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.table-container {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    margin: 20px -15px 20px -15px;
+    border: 1px solid #e2e8f0;
+}
+
+.table-container .panel-body {
+    padding: 0 !important;
+}
+
+.table-container .table-responsive {
+    padding: 0 !important;
+    margin: 0;
+}
+
+.table-container .table {
+    margin: 0;
+}
+
+.table-container .table {
+    margin-bottom: 0;
+    table-layout: fixed;
+    width: 100%;
+}
+
+.table-container .table th,
+.table-container .table td {
+    word-wrap: break-word;
+    overflow: hidden;
+}
+
+/* 表单容器样式 */
+.form-horizontal {
+    position: relative;
+    z-index: 1;
+    background-color: transparent;
+    padding: 15px;
+}
+
+.form-group {
+    position: relative;
+    z-index: 1;
+}
+
+.navbar {
+    background-color: #337ab7;
+    border-color: #2e6da4;
+    margin-bottom: 20px;
+}
+
+/* 顶部导航栏样式优化 */
+.navbar-inverse {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+    position: relative;
+    z-index: 1030;
+}
+
+.navbar-inverse .navbar-brand {
+    color: #fff;
+    font-weight: bold;
+    font-size: 20px;
+}
+
+.navbar-inverse .navbar-brand:hover {
+    color: #e3f2fd;
+}
+
+.navbar-inverse .navbar-nav > li > a {
+    color: #e3f2fd;
+    transition: all 0.3s ease;
+    margin: 5px 3px;
+    padding: 8px 12px;
+    border-radius: 4px;
+}
+
+.navbar-inverse .navbar-nav > li > a:hover {
+    color: #fff;
+    background-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+}
+
+.navbar-inverse .navbar-nav > .active > a,
+.navbar-inverse .navbar-nav > .active > a:hover,
+.navbar-inverse .navbar-nav > .active > a:focus {
+    color: #fff;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+.navbar-inverse .navbar-nav > .dropdown > a .caret {
+    border-top-color: #e3f2fd;
+    border-bottom-color: #e3f2fd;
+}
+
+.navbar-inverse .navbar-nav > .dropdown:hover > a .caret {
+    border-top-color: #fff;
+    border-bottom-color: #fff;
+}
+
+/* 下拉菜单样式修复 */
+.navbar .dropdown-menu {
+    position: absolute;
+    z-index: 1040;
+    background-color: #fff;
+    border: 1px solid rgba(0,0,0,.15);
+    border-radius: 4px;
+    box-shadow: 0 6px 12px rgba(0,0,0,.175);
+    min-width: 160px;
+    padding: 5px 0;
+    margin: 2px 0 0;
+    font-size: 14px;
+    text-align: left;
+    list-style: none;
+    background-clip: padding-box;
+}
+
+.navbar .dropdown-menu > li > a {
+    display: block;
+    padding: 8px 20px;
+    clear: both;
+    font-weight: normal;
+    line-height: 1.42857143;
+    color: #333;
+    white-space: nowrap;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.navbar .dropdown-menu > li > a:hover,
+.navbar .dropdown-menu > li > a:focus {
+    color: #fff;
+    background-color: #007bff;
+    text-decoration: none;
+}
+
+.navbar .dropdown-menu .divider {
+    height: 1px;
+    margin: 9px 0;
+    overflow: hidden;
+    background-color: #e5e5e5;
+}
+
+/* 确保下拉菜单在所有情况下都能正确显示 */
+.navbar-nav .dropdown.open .dropdown-menu {
+    display: block;
+    z-index: 1040;
+}
+
+.navbar-inverse .dropdown-menu {
+    background-color: #fff;
+    border-color: rgba(0,0,0,.15);
+}
+
+.navbar-inverse .dropdown-menu > li > a {
+    color: #333;
+}
+
+.navbar-inverse .dropdown-menu > li > a:hover,
+.navbar-inverse .dropdown-menu > li > a:focus {
+    color: #fff;
+    background-color: #007bff;
+}
+
+/* 修复可能的overflow问题 */
+.navbar-collapse {
+    overflow: visible !important;
+}
+
+.navbar-nav {
+    overflow: visible !important;
+}
+
+.navbar .dropdown {
+    position: static;
+}
+
+@media (min-width: 768px) {
+    .navbar .dropdown {
+        position: relative;
+    }
+    
+    .navbar .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+    }
+}
+
+/* 确保下拉菜单不被其他元素遮挡 */
+body {
+    overflow-x: hidden;
+}
+
+.navbar {
+    overflow: visible;
+}
+
+/* 统计页面特殊处理 */
+.statistics-header {
+    position: relative;
+    z-index: 1;
+}
+
+.wechat-user-management {
+    position: relative;
+    z-index: 1;
+}
+
+.navbar-default .navbar-brand {
+    color: #007bff;
+    font-weight: bold;
+}
+
+.navbar-default .navbar-nav > li > a {
+    color: #555;
+    transition: all 0.3s ease;
+    margin: 5px 3px;
+    padding: 8px 12px;
+    border-radius: 4px;
+}
+
+.navbar-default .navbar-nav > li > a:hover {
+    color: #fff;
+    background-color: #007bff;
+    border-radius: 4px;
+    transform: translateY(-1px);
+}
+
+.navbar-default .navbar-nav > .active > a,
+.navbar-default .navbar-nav > .active > a:hover,
+.navbar-default .navbar-nav > .active > a:focus {
+    color: #fff;
+    background-color: #007bff;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+}
+
+/* 页面标题 */
+.page-header {
+    border-bottom: 1px solid #eee;
+    margin-bottom: 30px;
+    padding-bottom: 15px;
+}
+
+.page-header h1 {
+    font-weight: 600;
+    color: #333;
+}
+
+/* 表单样式 */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-control {
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    box-shadow: none;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+    transition: background-color 0.3s ease;
+}
+
+.btn-primary:hover {
+    background-color: #0069d9;
+    border-color: #0062cc;
+}
+
+/* 图片容器 */
+.image-container {
+    margin-bottom: 15px;
+}
+
+.thumbnail {
+    position: relative;
+    padding: 0;
+    margin-bottom: 10px;
+}
+
+.thumbnail img {
+    width: 100%;
+    height: auto;
+    max-height: 150px;
+    object-fit: cover;
+}
+
+/* 表格样式 */
+.table-responsive {
+    border: none;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+.table-hover > tbody > tr:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.table > thead > tr > th {
+    border-bottom: 2px solid #007bff;
+    color: #495057;
+    font-weight: 600;
+}
+
+/* 面板样式 */
+.panel {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.05);
+    margin-bottom: 20px;
+}
+
+
+
+.panel-heading {
+    background-color: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+    border-radius: 3px 3px 0 0;
+    padding: 10px 15px;
+}
+
+.panel-title {
+    color: #333;
+    font-size: 16px;
+    font-weight: bold;
+    margin: 0;
+}
+
+.panel-body {
+    padding: 15px;
+}
+
+/* 分页样式 */
+.pagination {
+    margin: 20px 0 0;
+}
+
+.pagination > li > a,
+.pagination > li > span {
+    color: #007bff;
+    border-color: #dee2e6;
+}
+
+.pagination > .active > a,
+.pagination > .active > span {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+/* 面板样式 */
+.panel-heading {
+    padding: 10px 15px;
+}
+
+.panel-title {
+    margin-top: 5px;
+}
+
+/* 按钮样式 */
+.btn-xs {
+    margin-right: 5px;
+}
+
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-success {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
+.btn-warning {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background-color: #e0a800;
+    border-color: #d39e00;
+    color: #212529;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+/* 统计图表 */
+canvas {
+    width: 100% !important;
+    height: 300px !important;
+}
+
+/* 数据统计页面样式 */
+.statistics-header {
+    background-color: #337ab7;
+    color: white;
+    padding: 20px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.statistics-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    animation: shimmer 3s infinite;
+    z-index: 0;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+}
+
+.statistics-header h1 {
+    color: white;
+    margin-bottom: 10px;
+    font-size: 2.5em;
+    font-weight: 700;
+}
+
+.statistics-header .lead {
+    font-size: 1.2em;
+    opacity: 0.9;
+    margin-bottom: 0;
+}
+
+.admin-badge {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 25px;
+    font-size: 0.6em;
+    font-weight: 600;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    position: relative;
+    z-index: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* 订单列表表头样式 */
+.table thead th {
+    color: white !important;
+}
+
+.table thead th div {
+    color: white !important;
+}
+
+/* 微信用户管理页面样式优化 */
+.wechat-user-management {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+    padding: 20px 0;
+}
+
+.wechat-user-management .card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+.wechat-user-management .card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-bottom: none;
+    padding: 25px 30px;
+}
+
+.wechat-user-management .card-header h5 {
+    color: white;
+    font-weight: 600;
+    margin: 0;
+    font-size: 1.4rem;
+}
+
+.wechat-user-management .card-header .d-flex {
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+}
+
+.wechat-user-management .btn-group-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.wechat-user-management .btn-group-header .btn {
+    white-space: nowrap;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    border: 2px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.1);
+    color: white;
+    backdrop-filter: blur(10px);
+}
+
+.wechat-user-management .btn-group-header .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    background: rgba(255,255,255,0.2);
+    border-color: rgba(255,255,255,0.5);
+}
+
+.wechat-user-management .btn-group-header .btn-warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border-color: transparent;
+}
+
+.wechat-user-management .btn-group-header .btn-info {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    border-color: transparent;
+}
+
+/* 搜索表单样式 */
+.wechat-user-management .search-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+    background: rgba(255,255,255,0.1);
+    padding: 15px;
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+}
+
+.wechat-user-management .search-form .form-control {
+    min-width: 250px;
+    border-radius: 8px;
+    border: 2px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.9);
+    transition: all 0.3s ease;
+}
+
+.wechat-user-management .search-form .form-control:focus {
+    border-color: rgba(255,255,255,0.8);
+    box-shadow: 0 0 0 0.2rem rgba(255,255,255,0.25);
+    background: white;
+}
+
+.wechat-user-management .search-form .btn {
+    border-radius: 8px;
+    font-weight: 500;
+    padding: 8px 20px;
+    background: rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.3);
+    color: white;
+    transition: all 0.3s ease;
+}
+
+.wechat-user-management .search-form .btn:hover {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.5);
+    transform: translateY(-1px);
+}
+
+/* 表格样式优化 */
+.wechat-user-management .table {
+    margin-bottom: 0;
+    font-size: 14px;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.wechat-user-management .table thead th {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white !important;
+    font-weight: 600;
+    text-align: center;
+    vertical-align: middle;
+    border: none;
+    border-right: 1px solid rgba(255,255,255,0.2);
+    padding: 18px 15px;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    position: relative;
+    cursor: pointer;
+}
+
+.wechat-user-management .table thead th:first-child {
+    border-top-left-radius: 12px;
+}
+
+.wechat-user-management .table thead th:last-child {
+    border-top-right-radius: 12px;
+    border-right: none;
+}
+
+.wechat-user-management .table thead th::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+}
+
+.wechat-user-management .table tbody td {
+    vertical-align: middle;
+    padding: 15px;
+    border-bottom: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.wechat-user-management .table tbody tr {
+    transition: all 0.3s ease;
+}
+
+.wechat-user-management .table tbody tr:hover {
+    background: linear-gradient(135deg, #f8f9ff 0%, #e8f4fd 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+/* 操作按钮组样式 */
+.wechat-user-management .action-buttons {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: nowrap;
+}
+
+.wechat-user-management .action-buttons .btn {
+    padding: 8px 15px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    min-width: 70px;
+    text-align: center;
+    border: none;
+}
+
+.wechat-user-management .action-buttons .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.wechat-user-management .action-buttons .btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.wechat-user-management .action-buttons .btn-warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.wechat-user-management .action-buttons .btn-danger {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+}
+
+/* 徽章样式 */
+.wechat-user-management .badge {
+    font-size: 11px;
+    padding: 6px 12px;
+    border-radius: 15px;
+    font-weight: 500;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+    .wechat-user-management {
+        padding: 10px 0;
+    }
+    
+    .wechat-user-management .card-header {
+        padding: 20px 15px;
+    }
+    
+    .wechat-user-management .card-header .d-flex {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+    
+    .wechat-user-management .btn-group-header {
+        justify-content: center;
+    }
+    
+    .wechat-user-management .search-form {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .wechat-user-management .search-form .form-control {
+        min-width: 200px;
+    }
+
+    .wechat-user-management .table {
+        font-size: 12px;
+    }
+    
+    .wechat-user-management .table thead th {
+        padding: 12px 8px;
+        font-size: 12px;
+    }
+    
+    .wechat-user-management .table tbody td {
+        padding: 10px 8px;
+    }
+    
+    .wechat-user-management .action-buttons .btn {
+        padding: 6px 10px;
+        font-size: 11px;
+        min-width: 60px;
+    }
+}
+
+/* 微信用户备注样式 */
+.wechat-note {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.notes-display {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border: 2px solid #f39c12;
+    border-radius: 12px;
+    padding: 15px;
+    margin: 5px 0;
+    box-shadow: 0 4px 15px rgba(243, 156, 18, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.notes-display::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    animation: noteShimmer 3s infinite;
+}
+
+@keyframes noteShimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.notes-content {
+    font-weight: 600;
+    color: #8b4513;
+    font-size: 1.1em;
+    line-height: 1.4;
+    position: relative;
+    z-index: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.notes-display .fas {
+    font-size: 1.2em;
+    color: #f39c12;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+    position: relative;
+    z-index: 1;
+}
+
+/* 关键词高亮样式 */
+.keyword-highlight {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+    animation: keywordPulse 2s infinite;
+}
+
+@keyframes keywordPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+/* 紧急备注样式 */
+.urgent-notes {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 50%, #ef9a9a 100%) !important;
+    border: 3px solid #f44336 !important;
+    box-shadow: 0 6px 20px rgba(244, 67, 54, 0.3) !important;
+    animation: urgentBlink 3s infinite;
+}
+
+@keyframes urgentBlink {
+    0%, 50%, 100% { border-color: #f44336; }
+    25%, 75% { border-color: #ff5722; }
+}
+
+.urgent-notes::before {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent) !important;
+    animation: urgentShimmer 2s infinite !important;
+}
+
+@keyframes urgentShimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.urgent-notes .fas {
+    color: #f44336 !important;
+    animation: iconBounce 1.5s infinite;
+}
+
+@keyframes iconBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+
+/* 统计卡片样式 */
+.statistics-cards {
+    margin-bottom: 40px;
+}
+
+.stats-card {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.05);
+}
+
+
+
+
+
+.stats-icon {
+    float: left;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: white;
+    margin-right: 20px;
+}
+
+.stats-card-primary {
+    border-left: 4px solid #337ab7;
+}
+
+.stats-card-success {
+    border-left: 4px solid #5cb85c;
+}
+
+.stats-card-info {
+    border-left: 4px solid #5bc0de;
+}
+
+.stats-card-primary .stats-icon {
+    background-color: #337ab7;
+}
+
+.stats-card-success .stats-icon {
+    background-color: #5cb85c;
+}
+
+.stats-card-info .stats-icon {
+    background-color: #5bc0de;
+}
+
+.stats-content {
+    overflow: hidden;
+    padding-top: 5px;
+}
+
+.stats-number {
+    font-size: 2.5em;
+    font-weight: 700;
+    color: #333;
+    line-height: 1;
+    margin-bottom: 5px;
+}
+
+.stats-label {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 3px;
+}
+
+.stats-description {
+    font-size: 0.9em;
+    color: #999;
+}
+
+/* 排行榜样式 */
+.ranking-panel {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.05);
+    margin-bottom: 20px;
+}
+
+.ranking-panel .panel-heading {
+    background-color: #337ab7;
+    color: white;
+    border-bottom: 1px solid #2e6da4;
+    border-radius: 3px 3px 0 0;
+    padding: 10px 15px;
+}
+
+
+
+.ranking-panel .panel-title {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 5px;
+    position: relative;
+    z-index: 1;
+}
+
+.panel-subtitle {
+    color: rgba(255, 255, 255, 0.9);
+    margin: 0;
+    font-size: 0.95em;
+    position: relative;
+    z-index: 1;
+}
+
+.ranking-table {
+    margin-bottom: 0;
+}
+
+.ranking-table thead th {
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: #495057;
+    text-align: center;
+    padding: 15px;
+    vertical-align: middle;
+}
+
+.ranking-table tbody td {
+    text-align: center;
+    vertical-align: middle;
+    padding: 15px;
+}
+
+.ranking-row {
+    transition: all 0.3s ease;
+}
+
+.ranking-row:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+    transform: scale(1.01);
+}
+
+.top-rank {
+    background: linear-gradient(90deg, rgba(255, 215, 0, 0.1), rgba(255, 255, 255, 0.1));
+}
+
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 0.9em;
+    color: white;
+}
+
+.rank-gold {
+    background: linear-gradient(135deg, #ffd700, #ffed4e, #ff6b6b);
+    box-shadow: 0 6px 20px rgba(255, 215, 0, 0.6);
+    animation: pulse-gold 2s infinite;
+}
+
+.rank-silver {
+    background: linear-gradient(135deg, #e8e8e8, #c0c0c0, #a8a8a8);
+    box-shadow: 0 6px 20px rgba(192, 192, 192, 0.6);
+    animation: pulse-silver 2s infinite;
+}
+
+.rank-bronze {
+    background: linear-gradient(135deg, #cd7f32, #d4a574, #b8860b);
+    box-shadow: 0 6px 20px rgba(205, 127, 50, 0.6);
+    animation: pulse-bronze 2s infinite;
+}
+
+@keyframes pulse-gold {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes pulse-silver {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes pulse-bronze {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.rank-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #f8f9fa;
+    color: #666;
+    font-weight: 600;
+}
+
+.user-name {
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+}
+
+.badge-primary {
+    background-color: #337ab7;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.85em;
+}
+
+.badge-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.amount-cell {
+    font-weight: 700;
+    color: #28a745;
+    font-size: 1.1em;
+    text-align: center;
+}
+
+.empty-data {
+    padding: 40px;
+    color: #999;
+    font-size: 1.1em;
+}
+
+.empty-data i {
+    font-size: 2em;
+    margin-bottom: 10px;
+    opacity: 0.5;
+}
+
+/* 响应式调整 */
+@media (max-width: 767px) {
+    .form-inline .form-group {
+        margin-bottom: 10px;
+    }
+    
+    .statistics-header h1 {
+        font-size: 2em;
+    }
+    
+    .stats-card {
+        text-align: center;
+    }
+    
+    .stats-icon {
+        float: none;
+        margin: 0 auto 15px;
+    }
+    
+    .stats-content {
+        overflow: visible;
+    }
+    
+    .ranking-table {
+        font-size: 0.9em;
+    }
+    
+    .rank-badge {
+        width: 35px;
+        height: 35px;
+        font-size: 0.8em;
+    }
+}

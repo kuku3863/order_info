@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}{{ wechat_user.wechat_name }} - 微信用户详情{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <!-- 用户基本信息 -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user"></i> {{ wechat_user.wechat_name }} 的资料
+                    </h5>
+                    <div>
+                        <a href="{{ url_for('admin.edit_wechat_user', id=wechat_user.id) }}" 
+                           class="btn btn-warning btn-sm">
+                            <i class="fas fa-edit"></i> 编辑资料
+                        </a>
+                        <a href="{{ url_for('admin.wechat_user_list') }}" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-arrow-left"></i> 返回列表
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-borderless">
+                                {% if wechat_user.avatar %}
+                                <tr>
+                                    <td class="fw-bold" style="width: 120px;">头像：</td>
+                                    <td>
+                                        <img src="{{ url_for('main.uploaded_file', filename=wechat_user.avatar) }}" 
+                                             alt="用户头像" class="img-thumbnail" 
+                                             style="max-width: 120px; max-height: 120px;">
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                <tr>
+                                    <td class="fw-bold" style="width: 120px;">微信名：</td>
+                                    <td>{{ wechat_user.wechat_name }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">微信号：</td>
+                                    <td>{{ wechat_user.wechat_id }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">手机号：</td>
+                                    <td>{{ wechat_user.phone or '-' }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">邮箱：</td>
+                                    <td>{{ wechat_user.email or '-' }}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-borderless">
+                                {% if wechat_user.payment_qr_code %}
+                                <tr>
+                                    <td class="fw-bold" style="width: 120px;">付款码：</td>
+                                    <td>
+                                        <img src="{{ url_for('main.uploaded_file', filename=wechat_user.payment_qr_code) }}" 
+                                             alt="微信付款码" class="img-thumbnail" 
+                                             style="max-width: 120px; max-height: 120px;">
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                <tr>
+                                    <td class="fw-bold" style="width: 120px;">地址：</td>
+                                    <td>{{ wechat_user.address or '-' }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">创建时间：</td>
+                                    <td>{{ wechat_user.create_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">更新时间：</td>
+                                    <td>{{ wechat_user.update_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">备注：</td>
+                                    <td>
+                                        {% if wechat_user.notes %}
+                                        <div class="notes-display">
+                                            <i class="fas fa-sticky-note text-warning me-2"></i>
+                                            <span class="notes-content">{{ wechat_user.notes }}</span>
+                                        </div>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 统计信息 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar"></i> 订单统计</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-4">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body">
+                                    <h3 class="mb-0">{{ stats.total_orders }}</h3>
+                                    <p class="mb-0">总订单数</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-success text-white">
+                                <div class="card-body">
+                                    <h3 class="mb-0">¥{{ "%.2f"|format(stats.total_amount) }}</h3>
+                                    <p class="mb-0">总金额</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-info text-white">
+                                <div class="card-body">
+                                    <h3 class="mb-0">¥{{ "%.2f"|format(stats.avg_amount) }}</h3>
+                                    <p class="mb-0">平均金额</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 订单列表 -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-list"></i> 订单记录</h5>
+                </div>
+                <div class="card-body">
+                    <!-- 筛选表单 -->
+                    <form method="GET" class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <label class="form-label">开始日期</label>
+                            <small class="text-muted d-block">按完成时间筛选（未完成订单按创建时间）</small>
+                            <input type="date" name="start_date" class="form-control" 
+                                   value="{{ current_filters.start_date or '' }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">结束日期</label>
+                            <small class="text-muted d-block">按完成时间筛选（未完成订单按创建时间）</small>
+                            <input type="date" name="end_date" class="form-control" 
+                                   value="{{ current_filters.end_date or '' }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">订单类型</label>
+                            <select name="order_type_id" class="form-select">
+                                <option value="">全部类型</option>
+                                {% for order_type in order_types %}
+                                <option value="{{ order_type.id }}" 
+                                        {% if current_filters.order_type_id == order_type.id %}selected{% endif %}>
+                                    {{ order_type.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary me-2">
+                                <i class="fas fa-filter"></i> 筛选
+                            </button>
+                            <a href="{{ url_for('admin.wechat_user_detail', id=wechat_user.id) }}" 
+                               class="btn btn-outline-secondary">
+                                <i class="fas fa-times"></i> 清除
+                            </a>
+                        </div>
+                    </form>
+                    
+                    {% if orders %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>订单编码</th>
+                                    <th>订单类型</th>
+                                    <th>订单信息</th>
+                                    <th>完成时间</th>
+                                    <th>数量</th>
+                                    <th>金额</th>
+                                    <th>创建时间</th>
+                                    <th>提交用户</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in orders %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('main.view_order', id=order.id) }}" 
+                                           class="text-decoration-none">
+                                            {{ order.order_code }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        {% if order.order_type %}
+                                        <span class="badge bg-secondary">{{ order.order_type.name }}</span>
+                                        {% else %}
+                                        <span class="text-muted">未分类</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" 
+                                             title="{{ order.order_info }}">
+                                            {{ order.order_info }}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if order.completion_time %}
+                                        {{ order.completion_time.strftime('%Y-%m-%d') }}
+                                        {% else %}
+                                        <span class="text-muted">未设置</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ order.quantity }}</td>
+                                    <td>
+                                        {% if order.amount %}
+                                        <span class="text-success fw-bold">¥{{ "%.2f"|format(order.amount) }}</span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ order.create_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        {% if order.creator %}
+                                        <span class="badge bg-info">{{ order.creator.username }}</span>
+                                        {% else %}
+                                        <span class="text-muted">未知</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('main.view_order', id=order.id) }}" 
+                                           class="btn btn-primary btn-sm text-white" title="查看详情">
+                                            <i class="fas fa-eye"></i> 查看
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">暂无订单记录</h5>
+                        <p class="text-muted">该微信用户还没有提交过订单</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 备注关键词高亮功能
+document.addEventListener('DOMContentLoaded', function() {
+    const notesContent = document.querySelector('.notes-content');
+    if (notesContent) {
+        const text = notesContent.textContent;
+        const keywords = ['欠', '债', '款', '未付', '拖欠', '逾期', '催收'];
+        
+        let highlightedText = text;
+        let hasKeyword = false;
+        
+        keywords.forEach(keyword => {
+            if (text.includes(keyword)) {
+                hasKeyword = true;
+                const regex = new RegExp(`(${keyword})`, 'gi');
+                highlightedText = highlightedText.replace(regex, '<span class="keyword-highlight">$1</span>');
+            }
+        });
+        
+        if (hasKeyword) {
+            notesContent.innerHTML = highlightedText;
+            // 为包含关键词的备注添加特殊样式
+            const notesDisplay = notesContent.closest('.notes-display');
+            if (notesDisplay) {
+                notesDisplay.classList.add('urgent-notes');
+            }
+        }
+    }
+});
+</script>
+
+{% endblock %}

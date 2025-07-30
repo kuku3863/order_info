@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}订单管理系统 - 请求错误{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>请求错误</h1>
+</div>
+<div class="alert alert-warning">
+    <p>抱歉，您的请求格式不正确或包含无效数据。</p>
+</div>
+<p><a href="{{ url_for('main.index') }}" class="btn btn-primary">返回首页</a></p>
+{% endblock %}

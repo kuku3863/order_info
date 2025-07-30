@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}批量导入订单{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>批量导入订单</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">导入说明</h3>
+            </div>
+            <div class="panel-body">
+                <p>请按照以下步骤进行批量导入：</p>
+                <ol>
+                    <li>下载<a href="{{ url_for('main.export_template') }}">订单导入模板</a></li>
+                    <li>按照模板格式填写订单信息</li>
+                    <li>上传填写好的Excel(XLSX)或CSV文件</li>
+                </ol>
+                <p class="text-danger">注意：</p>
+                <ul>
+                    <li>订单编码必须唯一</li>
+                    <li>日期格式必须为：YYYY-MM-DD（例如：2023-01-01）</li>
+                    <li>数量必须为整数</li>
+                    <li>金额可以为空，如果填写必须为数字</li>
+                    <li>推荐使用Excel格式，可以避免编码问题</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <h3 class="panel-title">上传文件</h3>
+            </div>
+            <div class="panel-body">
+                <form method="post" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="file">选择Excel或CSV文件</label>
+                        <input type="file" class="form-control-file" id="file" name="file" accept=".xlsx,.csv" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">导入</button>
+                    <a href="{{ url_for('main.order_list') }}" class="btn btn-default">返回</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

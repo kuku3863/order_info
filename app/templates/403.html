@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}订单管理系统 - 禁止访问{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>禁止访问</h1>
+</div>
+<div class="alert alert-danger">
+    <p>您没有权限访问此页面。</p>
+</div>
+<p><a href="{{ url_for('main.index') }}" class="btn btn-primary">返回首页</a></p>
+{% endblock %}

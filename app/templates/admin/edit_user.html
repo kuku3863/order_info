@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block title %}{% if user %}编辑用户{% else %}新建用户{% endif %}{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>{% if user %}编辑用户{% else %}新建用户{% endif %}</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        {{ wtf.quick_form(form) }}
+    </div>
+</div>
+{% endblock %}
