@@ -174,8 +174,8 @@ def order_list():
     avg_amount = query.with_entities(func.avg(Order.amount)).scalar() or 0
     total_quantity = query.with_entities(func.sum(Order.quantity)).scalar() or 0
     
-    # 计算微信用户数（去重）
-    total_wechat_users = query.with_entities(func.count(func.distinct(Order.wechat_name))).scalar() or 0
+    # 计算微信用户数（统计WechatUser表中的实际记录数）
+    total_wechat_users = WechatUser.query.count()
     
     # 构建当前筛选条件
     current_filters = {
@@ -1462,7 +1462,7 @@ def backup_database():
         # 数据库文件路径
         db_path = current_app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
         if not os.path.exists(db_path):
-            return jsonify({'success': False, 'message': '数据库文件不存在'})
+            return jsonify({'success': False, 'error': '数据库文件不存在'})
         
         # 创建备份目录
         backup_dir = os.path.join(current_app.root_path, '..', 'backups')
@@ -1476,11 +1476,20 @@ def backup_database():
         # 复制数据库文件
         shutil.copy2(db_path, backup_path)
         
+        # 获取备份文件大小
+        backup_size = os.path.getsize(backup_path)
+        backup_size_mb = f"{backup_size / (1024 * 1024):.2f} MB"
+        
+        # 格式化时间戳
+        formatted_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
         return jsonify({
             'success': True,
-            'message': f'数据库备份成功！备份文件：{backup_filename}',
+            'backup_file': backup_filename,
+            'backup_size': backup_size_mb,
+            'timestamp': formatted_timestamp,
             'backup_path': backup_path
         })
         
     except Exception as e:
-        return jsonify({'success': False, 'message': f'备份失败：{str(e)}'})
+        return jsonify({'success': False, 'error': f'备份失败：{str(e)}'})

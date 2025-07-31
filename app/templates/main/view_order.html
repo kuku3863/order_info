@@ -26,7 +26,7 @@
                     <div class="col-md-6">
                         <p><strong>订单编码：</strong>{{ order.order_code }}</p>
                         <p><strong>订单类型：</strong>{{ order.order_type.name if order.order_type else '未分类' }}</p>
-                        <p><strong>微信名：</strong>{{ order.wechat_name }}</p>
+                        <p><strong>微信名：</strong>{{ order.wechat_name or '-' }}</p>
                         <p><strong>微信号：</strong>{{ order.wechat_id }}</p>
                         <p><strong>完成时间：</strong>{{ order.completion_time.strftime('%Y-%m-%d') if order.completion_time else '' }}</p>
                     </div>

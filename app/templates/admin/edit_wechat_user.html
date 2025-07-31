@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}编辑微信用户 - {{ wechat_user.wechat_name }}{% endblock %}
+{% block title %}编辑微信用户 - {{ wechat_user.wechat_name or '未知用户' }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -178,7 +178,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>您确定要删除微信用户 <strong>{{ wechat_user.wechat_name }}</strong> 吗？</p>
+                <p>您确定要删除微信用户 <strong>{{ wechat_user.wechat_name or '未知用户' }}</strong> 吗？</p>
                 <div class="alert alert-warning">
                     <i class="fas fa-info-circle"></i>
                     <strong>注意：</strong>如果该用户有关联的订单记录，将无法删除。请先处理相关订单。

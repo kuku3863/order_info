@@ -63,7 +63,7 @@
                                     <td>
                                         <a href="{{ url_for('admin.wechat_user_detail', id=wechat_user.id) }}" 
                                            class="text-decoration-none">
-                                            {{ wechat_user.wechat_name }}
+                                            {{ wechat_user.wechat_name or '-' }}
                                         </a>
                                     </td>
                                     <td>{{ wechat_user.wechat_id }}</td>
@@ -86,7 +86,7 @@
                                                 <i class="fas fa-edit"></i> 编辑
                                             </a>
                                             <button type="button" class="btn btn-danger text-white" 
-                                                    onclick="deleteWechatUser({{ wechat_user.id }}, '{{ wechat_user.wechat_name }}')" 
+                                                    onclick="deleteWechatUser({{ wechat_user.id }}, '{{ wechat_user.wechat_name or '未知用户' }}')" 
                                                     title="删除">
                                                 <i class="fas fa-trash"></i> 删除
                                             </button>

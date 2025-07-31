@@ -277,7 +277,7 @@
                                 {% endif %}
                                 <td class="text-center" style="padding: 12px 8px; font-weight: 500; color: #2d3748;"><span style="background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-family: monospace;">{{ order.order_code }}</span></td>
                                 <td class="text-center" style="padding: 12px 8px;"><span class="label" style="background: #4299e1; color: white; padding: 4px 8px; border-radius: 12px;">{{ order.order_type.name if order.order_type else '未分类' }}</span></td>
-                                <td class="text-center" style="padding: 12px 8px; font-weight: 500; color: #2d3748;">{{ order.wechat_name }}</td>
+                                <td class="text-center" style="padding: 12px 8px; font-weight: 500; color: #2d3748;">{{ order.wechat_name or '-' }}</td>
 
                                 <td class="text-center" style="padding: 12px 8px; font-family: monospace; color: #2d3748;">{{ order.phone or '-' }}</td>
                                 <td class="text-center" style="padding: 12px 8px; color: #4a5568;">{{ order.completion_time.strftime('%Y-%m-%d') if order.completion_time else '-' }}</td>
@@ -500,12 +500,19 @@
             };
             var newStatus = statusMap[currentStatus] || '未完成';
             
+            // 获取CSRF token
+            var csrfToken = $('meta[name=csrf-token]').attr('content');
+            if (!csrfToken) {
+                csrfToken = $('input[name="csrf_token"]').val();
+            }
+            
             // 直接更新状态
             $.ajax({
                 url: '{{ url_for("main.update_order_status", order_id=0) }}'.replace('0', orderId),
                 type: 'POST',
                 contentType: 'application/json',
                 headers: {
+                    'X-CSRFToken': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest'
                 },
                 data: JSON.stringify({
@@ -527,11 +534,18 @@
         $('#confirmStatusUpdate').click(function() {
             var newStatus = $('#orderStatus').val();
             
+            // 获取CSRF token
+            var csrfToken = $('meta[name=csrf-token]').attr('content');
+            if (!csrfToken) {
+                csrfToken = $('input[name="csrf_token"]').val();
+            }
+            
             $.ajax({
                 url: '{{ url_for("main.update_order_status", order_id=0) }}'.replace('0', statusOrderId),
                 type: 'POST',
                 contentType: 'application/json',
                 headers: {
+                    'X-CSRFToken': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest'
                 },
                 data: JSON.stringify({

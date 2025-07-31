@@ -225,7 +225,7 @@
                                         <span class="rank-number">{{ loop.index }}</span>
                                     {% endif %}
                                 </td>
-                                <td class="user-name">{{ stat.wechat_name }}</td>
+                                <td class="user-name">{{ stat.wechat_name or '-' }}</td>
                                 <td><span class="badge badge-primary">{{ stat.order_count }}</span></td>
                                 <td class="amount-cell">￥{{ "%.2f"|format(stat.total_amount or 0) }}</td>
                             </tr>
