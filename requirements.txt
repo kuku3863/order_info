@@ -11,3 +11,8 @@ Werkzeug==2.3.7
 flask-bootstrap==3.3.7.1
 openpyxl==3.1.2
 PyMySQL==1.1.0
+
+# 性能优化依赖
+Flask-Caching==2.1.0
+Flask-Compress==1.14
+redis==5.0.1

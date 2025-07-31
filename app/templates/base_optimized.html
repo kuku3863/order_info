@@ -1,0 +1,179 @@
+{% extends "bootstrap/base.html" %}
+
+{% block title %}订单管理系统{% endblock %}
+
+{% block head %}
+{{ super() }}
+<meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="description" content="高效、智能、安全的订单管理解决方案">
+
+<!-- 预加载关键资源 -->
+<link rel="preload" href="{{ url_for('static', filename='styles.css') }}" as="style">
+<link rel="preload" href="{{ url_for('static', filename='js/main.js') }}" as="script">
+
+<!-- 图标和样式 -->
+<link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+
+<!-- DNS预解析 -->
+<link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+<link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
+
+<!-- 关键CSS内联 -->
+<style>
+/* 关键渲染路径CSS */
+.navbar { background-color: #337ab7; border-color: #2e6da4; margin-bottom: 20px; }
+.container { position: relative; z-index: 1; background-color: transparent; padding: 15px 10px; margin-top: 20px; }
+.alert { margin-bottom: 15px; }
+</style>
+{% endblock %}
+
+{% block navbar %}
+<div class="navbar navbar-inverse" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="{{ url_for('main.index') }}">订单管理系统</a>
+        </div>
+        <div class="navbar-collapse collapse">
+            <ul class="nav navbar-nav">
+                {% if current_user.is_authenticated %}
+                <li><a href="{{ url_for('main.order_list') }}">订单列表</a></li>
+                <li><a href="{{ url_for('main.new_order') }}">新建订单</a></li>
+                <li><a href="{{ url_for('main.import_orders') }}">批量导入</a></li>
+                {% if current_user.can(Permission.MANAGE_FIELDS) %}
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown">管理 <b class="caret"></b></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="{{ url_for('main.order_statistics') }}">数据统计</a></li>
+                        <li><a href="{{ url_for('admin.field_list') }}">字段管理</a></li>
+                        {% if current_user.can(Permission.ADMIN) %}
+                        <li><a href="{{ url_for('admin.order_type_list') }}">订单类型管理</a></li>
+                        <li><a href="{{ url_for('admin.user_list') }}">用户管理</a></li>
+                        <li><a href="{{ url_for('admin.wechat_user_list') }}">微信用户管理</a></li>
+                        <li class="divider"></li>
+                        <li><a href="#" onclick="backupDatabase(); return false;"><i class="fa fa-database"></i> 数据库备份</a></li>
+                        {% endif %}
+                    </ul>
+                </li>
+                {% endif %}
+                {% endif %}
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                {% if current_user.is_authenticated %}
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown">{{ current_user.username }} <b class="caret"></b></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="{{ url_for('auth.change_password') }}">修改密码</a></li>
+                        <li><a href="{{ url_for('auth.logout') }}">退出登录</a></li>
+                    </ul>
+                </li>
+                {% else %}
+                <li><a href="{{ url_for('auth.login') }}">登录</a></li>
+                <li><a href="{{ url_for('auth.register') }}">注册</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' if category == 'success' else 'info' if category == 'info' else 'warning' }} alert-auto-dismiss">
+        <button type="button" class="close" data-dismiss="alert">&times;</button>
+        {{ message }}
+    </div>
+    {% endfor %}
+
+    {% block page_content %}{% endblock %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<!-- 延迟加载非关键JavaScript -->
+<script>
+// 页面加载完成后再加载main.js
+window.addEventListener('load', function() {
+    var script = document.createElement('script');
+    script.src = "{{ url_for('static', filename='js/main.js') }}";
+    script.async = true;
+    document.head.appendChild(script);
+});
+</script>
+
+<script>
+// 关键JavaScript功能
+document.addEventListener('DOMContentLoaded', function() {
+    // 自动消失flash消息
+    var alerts = document.querySelectorAll('.alert-auto-dismiss');
+    alerts.forEach(function(alert) {
+        setTimeout(function() {
+            if (alert.parentNode) {
+                alert.style.transition = 'opacity 0.5s';
+                alert.style.opacity = '0';
+                setTimeout(function() {
+                    if (alert.parentNode) {
+                        alert.parentNode.removeChild(alert);
+                    }
+                }, 500);
+            }
+        }, 3000);
+    });
+});
+
+// 备份数据库函数
+function backupDatabase() {
+    if (!confirm('确定要备份数据库吗？')) {
+        return;
+    }
+    
+    // 显示加载提示
+    var loadingAlert = document.createElement('div');
+    loadingAlert.className = 'alert alert-info alert-dismissible';
+    loadingAlert.innerHTML = '<button type="button" class="close" data-dismiss="alert">&times;</button>正在备份数据库，请稍候...';
+    document.querySelector('.container').insertBefore(loadingAlert, document.querySelector('.container').firstChild);
+    
+    fetch('/backup/database', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('网络响应错误');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (loadingAlert && loadingAlert.parentNode) {
+            loadingAlert.parentNode.removeChild(loadingAlert);
+        }
+        if (data.success) {
+            alert(`备份成功！\n备份文件：${data.backup_file}\n文件大小：${data.backup_size}\n备份时间：${data.timestamp}`);
+        } else {
+            alert('备份失败：' + data.error);
+        }
+    })
+    .catch(error => {
+        if (loadingAlert && loadingAlert.parentNode) {
+            loadingAlert.parentNode.removeChild(loadingAlert);
+        }
+        console.error('Error:', error);
+        alert('备份失败：' + error.message);
+    });
+}
+</script>
+{% endblock %} 

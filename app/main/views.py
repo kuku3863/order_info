@@ -1,13 +1,19 @@
 import os
 import uuid
 import shutil
+import json
 from datetime import datetime
-from flask import render_template, redirect, url_for, flash, request, current_app, jsonify, abort, send_from_directory
+from io import BytesIO
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils.dataframe import dataframe_to_rows
+from flask import render_template, redirect, url_for, flash, request, current_app, jsonify, abort, send_from_directory, send_file
 from flask_login import login_required, current_user
 from .. import csrf
 from . import main
 from .. import db
-from ..models import Order, OrderImage, Permission, OrderField, OrderType, WechatUser
+from ..models import Order, OrderImage, Permission, OrderField, OrderType, WechatUser, User
 from ..forms import OrderForm
 from ..decorators import admin_required
 from werkzeug.utils import secure_filename
@@ -18,9 +24,41 @@ def allowed_file(filename):
 
 def save_image(file, subfolder=''):
     if file and allowed_file(file.filename):
+        # 检查文件大小
+        file.seek(0, 2)  # 移动到文件末尾
+        file_size = file.tell()
+        file.seek(0)  # 重置文件指针
+        
+        max_size = current_app.config.get('MAX_CONTENT_LENGTH', 16 * 1024 * 1024)  # 默认16MB
+        if file_size > max_size:
+            raise ValueError(f"文件大小超过限制 ({max_size // (1024*1024)}MB)")
+        
         filename = secure_filename(file.filename)
         # 获取文件扩展名
         file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+        
+        # 验证文件类型（通过魔数检查）
+        file_header = file.read(8)
+        file.seek(0)
+        
+        # 简单的文件类型验证
+        image_signatures = {
+            b'\xff\xd8\xff': 'jpg',
+            b'\x89PNG\r\n\x1a\n': 'png',
+            b'GIF87a': 'gif',
+            b'GIF89a': 'gif',
+            b'RIFF': 'webp'  # WebP文件以RIFF开头
+        }
+        
+        is_valid_image = False
+        for signature in image_signatures:
+            if file_header.startswith(signature):
+                is_valid_image = True
+                break
+        
+        if not is_valid_image:
+            raise ValueError("无效的图片文件格式")
+        
         # 生成唯一文件名，确保包含扩展名
         unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
         
@@ -31,12 +69,12 @@ def save_image(file, subfolder=''):
             file_path = os.path.join(upload_dir, unique_filename)
             file.save(file_path)
             # 返回相对路径，用于存储在数据库（使用正斜杠以确保Web兼容性）
-            return f"uploads/{subfolder}/{unique_filename}"
+            return f"{subfolder}/{unique_filename}"
         else:
             file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
             file.save(file_path)
             # 返回相对路径，用于存储在数据库（使用正斜杠以确保Web兼容性）
-            return f"uploads/{unique_filename}"
+            return f"{unique_filename}"
     return None
 
 @main.route('/')
@@ -57,8 +95,7 @@ def order_list():
     end_date = request.args.get('end_date')
     search_type = request.args.get('search_type', 'wechat_name')
     search_value = request.args.get('search_value', '').strip()
-    sort_by = request.args.get('sort_by', 'amount')
-    sort_by = request.args.get('sort_by', 'amount')  # 排序方式：amount(金额) 或 count(数量)
+    sort_by = request.args.get('sort_by')  # 排序方式：amount(金额)、count(数量) 或 None(按时间)
     
     # 构建查询
     query = Order.query
@@ -93,239 +130,228 @@ def order_list():
     
     if end_date:
         try:
-            end_dt = datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
             query = query.filter(Order.completion_time <= end_dt)
         except ValueError:
             flash('结束日期格式错误', 'danger')
     
-    # 用户搜索筛选
+    # 搜索功能
     if search_value:
-        if search_type == 'order_code':
-            query = query.filter(Order.order_code.contains(search_value))
-        elif search_type == 'wechat_name':
-            query = query.filter(Order.wechat_name.contains(search_value))
+        if search_type == 'wechat_name':
+            query = query.filter(Order.wechat_name.like(f'%{search_value}%'))
         elif search_type == 'wechat_id':
-            query = query.filter(Order.wechat_id.contains(search_value))
+            query = query.filter(Order.wechat_id.like(f'%{search_value}%'))
         elif search_type == 'phone':
-            query = query.filter(Order.phone.isnot(None)).filter(Order.phone.contains(search_value))
+            query = query.filter(Order.phone.like(f'%{search_value}%'))
+        elif search_type == 'order_code':
+            query = query.filter(Order.order_code.like(f'%{search_value}%'))
     
-
+    # 排序 - 默认按创建时间降序，新订单在前
+    if sort_by == 'amount':
+        query = query.order_by(Order.amount.desc().nullslast(), Order.create_time.desc())
+    elif sort_by == 'count':
+        query = query.order_by(Order.quantity.desc().nullslast(), Order.create_time.desc())
+    else:
+        # 默认排序：按创建时间降序，确保新订单在最前面
+        query = query.order_by(Order.create_time.desc())
     
     # 分页
-    pagination = query.order_by(Order.create_time.desc()).paginate(
-        page=page, per_page=10, error_out=False)
+    pagination = query.paginate(
+        page=page, per_page=10, error_out=False
+    )
     orders = pagination.items
     
-    # 计算总金额
-    total_amount = query.filter(Order.amount.isnot(None)).with_entities(db.func.sum(Order.amount)).scalar() or 0
-    
-    # 计算数量总数
-    total_quantity = query.with_entities(db.func.sum(Order.quantity)).scalar() or 0
-    
-    # 获取微信用户总数
-    from ..models import WechatUser
-    total_wechat_users = WechatUser.query.count()
-    
-    # 获取自定义字段信息
-    custom_fields = OrderField.query.filter_by(is_default=False).order_by(OrderField.order).all()
-    
-    # 获取所有用户（仅管理员可见）
+    # 获取所有用户（用于筛选）
     users = []
     if current_user.can(Permission.VIEW_ALL):
         from ..models import User
         users = User.query.all()
     
-    return render_template('main/order_list.html', 
-                         orders=orders, 
-                         pagination=pagination, 
-                         custom_fields=custom_fields,
+    # 计算统计信息
+    from sqlalchemy import func
+    total_orders = pagination.total
+    total_amount = query.with_entities(func.sum(Order.amount)).scalar() or 0
+    avg_amount = query.with_entities(func.avg(Order.amount)).scalar() or 0
+    total_quantity = query.with_entities(func.sum(Order.quantity)).scalar() or 0
+    
+    # 计算微信用户数（去重）
+    total_wechat_users = query.with_entities(func.count(func.distinct(Order.wechat_name))).scalar() or 0
+    
+    # 构建当前筛选条件
+    current_filters = {
+        'user_id': user_id,
+        'start_date': start_date,
+        'end_date': end_date,
+        'search_type': search_type,
+        'search_value': search_value,
+        'sort_by': sort_by
+    }
+    
+    return render_template('main/order_list.html',
+                         orders=orders,
+                         pagination=pagination,
                          users=users,
+                         current_filters=current_filters,
+                         total_orders=total_orders,
                          total_amount=total_amount,
+                         avg_amount=avg_amount,
                          total_quantity=total_quantity,
                          total_wechat_users=total_wechat_users,
-                         current_filters={
-                             'user_id': user_id,
-                             'start_date': start_date,
-                             'end_date': end_date,
-                             'search_type': search_type,
-                             'search_value': search_value
-                         })
+                         now=datetime.now())
 
 @main.route('/order/new', methods=['GET', 'POST'])
 @login_required
 def new_order():
     form = OrderForm()
+    
     if form.validate_on_submit():
-        # 创建或更新微信用户资料
-        wechat_user = WechatUser.query.filter_by(wechat_id=form.wechat_id.data).first()
-        if not wechat_user:
-            wechat_user = WechatUser(
-                wechat_name=form.wechat_name.data,
-                wechat_id=form.wechat_id.data
-            )
-            db.session.add(wechat_user)
-        else:
-            # 更新微信名（可能会变化）
-            wechat_user.wechat_name = form.wechat_name.data
-            wechat_user.update_time = datetime.utcnow()
+        # 生成订单编号
+        order_code = f"ORD{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:8].upper()}"
         
+        # 创建订单
         order = Order(
-            order_code=form.order_code.data,
+            order_code=order_code,
             wechat_name=form.wechat_name.data,
             wechat_id=form.wechat_id.data,
             phone=form.phone.data,
-            notes=form.notes.data,
             order_info=form.order_info.data,
             completion_time=form.completion_time.data,
             quantity=form.quantity.data,
             amount=form.amount.data,
-            order_type_id=form.order_type_id.data,
-            user_id=current_user.id
+            notes=form.notes.data,
+            user_id=current_user.id,
+            order_type_id=form.order_type_id.data
         )
         
         # 处理自定义字段
-        custom_fields = OrderField.query.filter_by(is_default=False).all()
-        for field in custom_fields:
-            if hasattr(form, field.name) and getattr(form, field.name).data is not None:
-                order.set_custom_field(field.name, getattr(form, field.name).data)
+        custom_fields = {}
+        for field in OrderField.query.filter_by(is_default=False).all():
+            if hasattr(form, field.name):
+                field_value = getattr(form, field.name).data
+                if field_value:
+                    custom_fields[field.name] = field_value
+        order.custom_fields = json.dumps(custom_fields, ensure_ascii=False) if custom_fields else None
+        
+        # 处理图片上传
+        uploaded_files = request.files.getlist('images')
+        for uploaded_file in uploaded_files:
+            if uploaded_file and uploaded_file.filename:
+                image_path = save_image(uploaded_file, 'orders')
+                if image_path:
+                    order_image = OrderImage(order_id=order.id, image_path=image_path)
+                    db.session.add(order_image)
         
         db.session.add(order)
         db.session.commit()
         
-        # 处理图片上传
-        if 'images' in request.files:
-            files = request.files.getlist('images')
-            for file in files:
-                image_path = save_image(file)
-                if image_path:
-                    image = OrderImage(order_id=order.id, image_path=image_path)
-                    db.session.add(image)
-        
-        db.session.commit()
-        flash('订单已创建成功')
+        flash('订单创建成功！', 'success')
         return redirect(url_for('main.order_list'))
     
+    # GET请求或表单验证失败，显示表单
     return render_template('main/new_order.html', form=form)
 
 @main.route('/order/<int:id>')
 @login_required
 def view_order(id):
     order = Order.query.get_or_404(id)
-    # 检查权限
+    
+    # 权限检查
     if not current_user.can(Permission.VIEW_ALL) and order.user_id != current_user.id:
         abort(403)
     
-    # 获取自定义字段信息
-    custom_fields = OrderField.query.filter_by(is_default=False).order_by(OrderField.order).all()
-    
-    return render_template('main/view_order.html', order=order, custom_fields=custom_fields)
+    return render_template('main/view_order.html', order=order)
 
 @main.route('/order/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_order(id):
     order = Order.query.get_or_404(id)
     
-    # 权限检查：普通用户只能编辑自己的订单，超级管理员可以编辑所有订单
+    # 权限检查
     if not current_user.can(Permission.VIEW_ALL) and order.user_id != current_user.id:
         abort(403)
     
-    form = OrderForm(order=order)
+    form = OrderForm(obj=order)
+    form.order = order  # 设置当前订单对象，用于验证时排除自身
+    form.order_type_id.choices = [(t.id, t.name) for t in OrderType.query.filter_by(is_active=True).all()]
+    
     if form.validate_on_submit():
-        # 创建或更新微信用户资料
-        wechat_user = WechatUser.query.filter_by(wechat_id=form.wechat_id.data).first()
-        if not wechat_user:
-            wechat_user = WechatUser(
-                wechat_name=form.wechat_name.data,
-                wechat_id=form.wechat_id.data
-            )
-            db.session.add(wechat_user)
-        else:
-            # 更新微信名（可能会变化）
-            wechat_user.wechat_name = form.wechat_name.data
-            wechat_user.update_time = datetime.utcnow()
-        
-        order.order_code = form.order_code.data
+        # 更新订单信息
         order.wechat_name = form.wechat_name.data
         order.wechat_id = form.wechat_id.data
         order.phone = form.phone.data
-        order.notes = form.notes.data
         order.order_info = form.order_info.data
-        order.completion_time = form.completion_time.data
         order.quantity = form.quantity.data
         order.amount = form.amount.data
+        order.notes = form.notes.data
         order.order_type_id = form.order_type_id.data
+        order.completion_time = form.completion_time.data
         
         # 处理自定义字段
-        custom_fields = OrderField.query.filter_by(is_default=False).all()
-        for field in custom_fields:
-            if hasattr(form, field.name) and getattr(form, field.name).data is not None:
-                order.set_custom_field(field.name, getattr(form, field.name).data)
-        
-        db.session.add(order)
+        custom_fields = {}
+        for field in OrderField.query.filter_by(is_default=False).all():
+            if hasattr(form, f'custom_{field.name}'):
+                field_value = getattr(form, f'custom_{field.name}').data
+                if field_value:
+                    custom_fields[field.name] = field_value
+        order.custom_fields = json.dumps(custom_fields, ensure_ascii=False) if custom_fields else None
         
         # 处理图片上传
-        if 'images' in request.files:
-            files = request.files.getlist('images')
-            for file in files:
-                image_path = save_image(file)
+        uploaded_files = request.files.getlist('images')
+        for uploaded_file in uploaded_files:
+            if uploaded_file and uploaded_file.filename:
+                image_path = save_image(uploaded_file, 'orders')
                 if image_path:
-                    image = OrderImage(order_id=order.id, image_path=image_path)
-                    db.session.add(image)
+                    order_image = OrderImage(order_id=order.id, image_path=image_path)
+                    db.session.add(order_image)
         
         db.session.commit()
-        flash('订单已更新成功')
-        return redirect(url_for('main.view_order', id=order.id))
+        flash('订单更新成功！', 'success')
+        return redirect(url_for('main.view_order', id=id))
     
-    # 填充表单数据
-    form.order_code.data = order.order_code
-    form.wechat_name.data = order.wechat_name
-    form.wechat_id.data = order.wechat_id
-    form.phone.data = order.phone
-    form.notes.data = order.notes
-    form.order_info.data = order.order_info
-    form.completion_time.data = order.completion_time
-    form.quantity.data = order.quantity
-    form.amount.data = order.amount
-    form.order_type_id.data = order.order_type_id
-    
-    # 填充自定义字段数据
-    if order.custom_fields:
-        import json
-        custom_data = json.loads(order.custom_fields)
-        for field_name, value in custom_data.items():
-            if hasattr(form, field_name):
-                getattr(form, field_name).data = value
-    
+    # GET请求或表单验证失败，显示编辑表单
     return render_template('main/edit_order.html', form=form, order=order)
 
 @main.route('/order/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_order(id):
     order = Order.query.get_or_404(id)
-    # 检查权限
+    
+    # 权限检查
     if not current_user.can(Permission.VIEW_ALL) and order.user_id != current_user.id:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': '权限不足'})
         abort(403)
+    
+    try:
+        # 删除相关图片
+        for image in order.images:
+            try:
+                image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], image.image_path.replace('uploads/', ''))
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+            except Exception as e:
+                print(f"删除图片失败: {e}")
+                pass
+            db.session.delete(image)
         
-    # 删除关联的图片文件
-    for image in order.images:
-        try:
-            file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], image.image_path.replace('uploads/', ''))
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception as e:
-            current_app.logger.error(f"删除图片文件失败: {e}")
-    
-    db.session.delete(order)
-    db.session.commit()
-    
-    # 检查是否是AJAX请求
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return jsonify({'success': True})
-    else:
-        flash('订单已删除')
-        return redirect(url_for('main.order_list'))
-
-
+        db.session.delete(order)
+        db.session.commit()
+        
+        # 根据请求类型返回不同响应
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'message': '订单删除成功！'})
+        else:
+            flash('订单删除成功！', 'success')
+            return redirect(url_for('main.order_list'))
+            
+    except Exception as e:
+        db.session.rollback()
+        print(f"删除订单失败: {e}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': f'删除失败：{str(e)}'})
+        else:
+            flash(f'删除失败：{str(e)}', 'error')
+            return redirect(url_for('main.order_list'))
 
 @main.route('/orders/statistics')
 @login_required
@@ -336,17 +362,25 @@ def order_statistics():
     
     from datetime import date, timedelta
     from sqlalchemy import func
-    from ..models import User
     
+    # 获取查询参数
     user_id = request.args.get('user_id', type=int)
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     search_type = request.args.get('search_type', 'wechat_name')
     search_value = request.args.get('search_value', '').strip()
-    sort_by = request.args.get('sort_by', 'amount')  # 排序方式：amount(金额) 或 count(数量)
+    sort_by = request.args.get('sort_by', 'amount')
+    
+    # 默认显示所有数据（不设置日期范围）
+    # 如果用户没有指定日期范围，则显示所有数据
+    if not start_date and not end_date:
+        # 不设置默认日期范围，显示所有数据
+        pass
     
     # 构建查询
     query = Order.query
+    start_dt = None
+    end_dt = None
     
     # 用户筛选
     if user_id:
@@ -356,136 +390,173 @@ def order_statistics():
     if start_date:
         try:
             start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            query = query.filter(Order.completion_time >= start_dt)
+            query = query.filter(Order.create_time >= start_dt)
         except ValueError:
             flash('开始日期格式错误', 'danger')
     
     if end_date:
         try:
-            end_dt = datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S')
-            query = query.filter(Order.completion_time <= end_dt)
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            # 结束日期包含当天，所以加1天
+            from datetime import timedelta
+            end_dt = end_dt + timedelta(days=1)
+            query = query.filter(Order.create_time < end_dt)
         except ValueError:
             flash('结束日期格式错误', 'danger')
     
-    # 用户搜索筛选
+    # 搜索筛选
     if search_value:
         if search_type == 'wechat_name':
             query = query.filter(Order.wechat_name.contains(search_value))
         elif search_type == 'wechat_id':
             query = query.filter(Order.wechat_id.contains(search_value))
         elif search_type == 'phone':
-            query = query.filter(Order.phone.isnot(None)).filter(Order.phone.contains(search_value))
+            query = query.filter(Order.phone.contains(search_value))
     
-    # 统计数据
+    # 统计信息
     total_orders = query.count()
-    total_amount = query.filter(Order.amount.isnot(None)).with_entities(func.sum(Order.amount)).scalar() or 0
-    avg_amount = query.filter(Order.amount.isnot(None)).with_entities(func.avg(Order.amount)).scalar() or 0
+    total_amount = query.with_entities(func.sum(Order.amount)).scalar() or 0
+    avg_amount = query.with_entities(func.avg(Order.amount)).scalar() or 0
+    total_quantity = query.with_entities(func.sum(Order.quantity)).scalar() or 0
+    
+    # 按状态统计
+    status_stats_query = db.session.query(
+        Order.status,
+        func.count(Order.id).label('count'),
+        func.sum(Order.amount).label('amount')
+    )
+    
+    # 应用筛选条件
+    if user_id:
+        status_stats_query = status_stats_query.filter(Order.user_id == user_id)
+    if start_dt:
+        status_stats_query = status_stats_query.filter(Order.create_time >= start_dt)
+    if end_dt:
+        status_stats_query = status_stats_query.filter(Order.create_time < end_dt)
+    if search_value:
+        if search_type == 'wechat_name':
+            status_stats_query = status_stats_query.filter(Order.wechat_name.contains(search_value))
+        elif search_type == 'wechat_id':
+            status_stats_query = status_stats_query.filter(Order.wechat_id.contains(search_value))
+        elif search_type == 'phone':
+            status_stats_query = status_stats_query.filter(Order.phone.contains(search_value))
+    
+    status_stats = status_stats_query.group_by(Order.status).all()
+    
+    # 按订单类型统计
+    type_stats_query = db.session.query(
+        OrderType.name,
+        func.count(Order.id).label('order_count'),
+        func.sum(Order.amount).label('total_amount')
+    ).outerjoin(Order, OrderType.id == Order.order_type_id)
+    
+    # 应用筛选条件
+    if user_id:
+        type_stats_query = type_stats_query.filter(Order.user_id == user_id)
+    if start_dt:
+        type_stats_query = type_stats_query.filter(Order.create_time >= start_dt)
+    if end_dt:
+        type_stats_query = type_stats_query.filter(Order.create_time < end_dt)
+    if search_value:
+        if search_type == 'wechat_name':
+            type_stats_query = type_stats_query.filter(Order.wechat_name.contains(search_value))
+        elif search_type == 'wechat_id':
+            type_stats_query = type_stats_query.filter(Order.wechat_id.contains(search_value))
+        elif search_type == 'phone':
+            type_stats_query = type_stats_query.filter(Order.phone.contains(search_value))
+    
+    type_stats = type_stats_query.group_by(OrderType.id, OrderType.name).all()
     
     # 按用户统计
-    user_stats = db.session.query(
+    user_stats_query = db.session.query(
         User.username,
         func.count(Order.id).label('order_count'),
         func.sum(Order.amount).label('total_amount')
     ).join(Order, User.id == Order.user_id)
     
+    # 应用筛选条件
     if user_id:
-        user_stats = user_stats.filter(Order.user_id == user_id)
-    if start_date:
-        try:
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            user_stats = user_stats.filter(Order.create_time >= start_dt)
-        except ValueError:
-            pass
-    if end_date:
-        try:
-            end_dt = datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S')
-            user_stats = user_stats.filter(Order.create_time <= end_dt)
-        except ValueError:
-            pass
+        user_stats_query = user_stats_query.filter(Order.user_id == user_id)
+    if start_dt:
+        user_stats_query = user_stats_query.filter(Order.create_time >= start_dt)
+    if end_dt:
+        user_stats_query = user_stats_query.filter(Order.create_time < end_dt)
     if search_value:
         if search_type == 'wechat_name':
-            user_stats = user_stats.filter(Order.wechat_name.contains(search_value))
+            user_stats_query = user_stats_query.filter(Order.wechat_name.contains(search_value))
         elif search_type == 'wechat_id':
-            user_stats = user_stats.filter(Order.wechat_id.contains(search_value))
+            user_stats_query = user_stats_query.filter(Order.wechat_id.contains(search_value))
         elif search_type == 'phone':
-            user_stats = user_stats.filter(Order.phone.isnot(None)).filter(Order.phone.contains(search_value))
+            user_stats_query = user_stats_query.filter(Order.phone.contains(search_value))
     
-    user_stats = user_stats.group_by(User.id, User.username).all()
+    user_stats = user_stats_query.group_by(User.id, User.username).all()
     
-    # 按微信用户统计
-    wechat_stats_query = query.with_entities(
+    # 按微信用户统计（Top 10）
+    wechat_stats_query = db.session.query(
         Order.wechat_name,
         func.count(Order.id).label('order_count'),
         func.sum(Order.amount).label('total_amount')
-    ).group_by(Order.wechat_name)
+    )
     
-    # 根据排序参数决定排序方式
-    if sort_by == 'count':
-        wechat_stats = wechat_stats_query.order_by(func.count(Order.id).desc()).limit(10).all()
-    else:  # 默认按金额排序
-        wechat_stats = wechat_stats_query.order_by(func.sum(Order.amount).desc()).limit(10).all()
-    
-    # 按订单类型统计
-    type_stats = db.session.query(
-        OrderType.name,
-        func.count(Order.id).label('order_count'),
-        func.sum(Order.amount).label('total_amount')
-    ).join(Order, OrderType.id == Order.order_type_id, isouter=True)
-    
+    # 应用筛选条件
     if user_id:
-        type_stats = type_stats.filter(Order.user_id == user_id)
-    if start_date:
-        try:
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            type_stats = type_stats.filter(Order.create_time >= start_dt)
-        except ValueError:
-            pass
-    if end_date:
-        try:
-            end_dt = datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S')
-            type_stats = type_stats.filter(Order.create_time <= end_dt)
-        except ValueError:
-            pass
+        wechat_stats_query = wechat_stats_query.filter(Order.user_id == user_id)
+    if start_dt:
+        wechat_stats_query = wechat_stats_query.filter(Order.create_time >= start_dt)
+    if end_dt:
+        wechat_stats_query = wechat_stats_query.filter(Order.create_time < end_dt)
     if search_value:
         if search_type == 'wechat_name':
-            type_stats = type_stats.filter(Order.wechat_name.contains(search_value))
+            wechat_stats_query = wechat_stats_query.filter(Order.wechat_name.contains(search_value))
         elif search_type == 'wechat_id':
-            type_stats = type_stats.filter(Order.wechat_id.contains(search_value))
+            wechat_stats_query = wechat_stats_query.filter(Order.wechat_id.contains(search_value))
         elif search_type == 'phone':
-            type_stats = type_stats.filter(Order.phone.isnot(None)).filter(Order.phone.contains(search_value))
+            wechat_stats_query = wechat_stats_query.filter(Order.phone.contains(search_value))
     
-    type_stats = type_stats.group_by(OrderType.id, OrderType.name).all()
+    wechat_stats_query = wechat_stats_query.filter(Order.wechat_name.isnot(None)).group_by(Order.wechat_name)
     
-    # 获取所有用户
+    if sort_by == 'count':
+        wechat_stats = wechat_stats_query.order_by(func.count(Order.id).desc()).limit(10).all()
+    else:
+        wechat_stats = wechat_stats_query.order_by(func.sum(Order.amount).desc()).limit(10).all()
+    
+    # 获取所有用户（用于筛选）
     users = User.query.all()
+    
+    # 构建当前筛选条件
+    current_filters = {
+        'user_id': user_id,
+        'start_date': start_date,
+        'end_date': end_date,
+        'search_type': search_type,
+        'search_value': search_value,
+        'sort_by': sort_by
+    }
     
     return render_template('main/order_statistics.html',
                          total_orders=total_orders,
                          total_amount=total_amount,
                          avg_amount=avg_amount,
+                         total_quantity=total_quantity,
+                         status_stats=status_stats,
+                         type_stats=type_stats,
                          user_stats=user_stats,
                          wechat_stats=wechat_stats,
-                         type_stats=type_stats,
                          users=users,
-                         current_filters={
-                             'user_id': user_id,
-                             'start_date': start_date,
-                             'end_date': end_date,
-                             'search_type': search_type,
-                             'search_value': search_value,
-                             'sort_by': sort_by
-                         })
+                         current_filters=current_filters)
 
 @main.route('/debug/user-info')
 @login_required
 def debug_user_info():
-    """调试用户信息和权限"""
-    user_info = {
-        'id': current_user.id,
+    """调试用户信息"""
+    if not current_user.is_administrator():
+        abort(403)
+    
+    return jsonify({
+        'user_id': current_user.id,
         'username': current_user.username,
         'email': current_user.email,
-        'role_name': current_user.role.name if current_user.role else None,
-        'role_id': current_user.role_id,
+        'role': current_user.role.name if current_user.role else None,
         'permissions': {
             'VIEW_OWN': current_user.can(Permission.VIEW_OWN),
             'SUBMIT': current_user.can(Permission.SUBMIT),
@@ -493,535 +564,626 @@ def debug_user_info():
             'MANAGE_FIELDS': current_user.can(Permission.MANAGE_FIELDS),
             'ADMIN': current_user.can(Permission.ADMIN)
         }
-    }
-    
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return jsonify(user_info)
-    else:
-        return f"<pre>{user_info}</pre>"
+    })
 
 @main.route('/orders/export-template')
 @login_required
 def export_template():
-    from io import BytesIO
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
+    """导出订单模板"""
+    # 所有登录用户都可以下载模板
+    # 移除权限检查，因为下载模板是基础功能
     
-    # 获取所有字段（包括默认字段和自定义字段）
-    default_fields = OrderField.query.filter_by(is_default=True).order_by(OrderField.order).all()
-    custom_fields = OrderField.query.filter_by(is_default=False).order_by(OrderField.order).all()
+    # 导入语句已在文件顶部
     
-    # 创建Excel工作簿和工作表
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "订单导入模板"
+    # 创建工作簿
+    wb = Workbook()
     
-    # 定义样式
-    header_font = Font(name='微软雅黑', size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")  # 更改为更美观的红色
-    header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    # 创建订单模板sheet
+    ws1 = wb.active
+    ws1.title = "订单模板"
     
-    data_font = Font(name='微软雅黑', size=10)
-    data_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    # 获取当前日期作为默认完成时间
+    current_date = datetime.now().strftime('%Y-%m-%d')
     
+    # 模板数据 - 按页面列顺序排列，备注在最后
+    template_data = {
+        '*订单编码': ['ORD20240101001'],
+        '*订单类型': ['海报'],
+        '*微信名': ['张三'],
+        '*手机号': ['13800138001'],
+        '*订单信息': ['制作海报，尺寸A4'],
+        '*完成时间': [current_date],
+        '*数量': [1],
+        '金额': [100.00],
+        '备注': ['']
+    }
+    
+    df = pd.DataFrame(template_data)
+    
+    # 将数据写入工作表
+    for r in dataframe_to_rows(df, index=False, header=True):
+        ws1.append(r)
+    
+    # 手动设置带星号的列标题，使星号为红色
+    from openpyxl.styles.colors import Color
+    from openpyxl.cell.rich_text import TextBlock, CellRichText
+    from openpyxl.cell.text import InlineFont
+    
+    # 设置必填项列标题的星号为红色
+    red_star = TextBlock(InlineFont(b=True, color="FF0000", sz=12), "*")
+    
+    # A列：*订单编码
+    white_text_a = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "订单编码")
+    ws1['A1'].value = CellRichText(red_star, white_text_a)
+    
+    # B列：*订单类型
+    white_text_b = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "订单类型")
+    ws1['B1'].value = CellRichText(red_star, white_text_b)
+    
+    # C列：*微信名
+    white_text_c = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "微信名")
+    ws1['C1'].value = CellRichText(red_star, white_text_c)
+    
+    # D列：*手机号
+    white_text_d = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "手机号")
+    ws1['D1'].value = CellRichText(red_star, white_text_d)
+    
+    # E列：*订单信息
+    white_text_e = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "订单信息")
+    ws1['E1'].value = CellRichText(red_star, white_text_e)
+    
+    # F列：*完成时间
+    white_text_f = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "完成时间")
+    ws1['F1'].value = CellRichText(red_star, white_text_f)
+    
+    # G列：*数量
+    white_text_g = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "数量")
+    ws1['G1'].value = CellRichText(red_star, white_text_g)
+    
+    # 设置丰富的样式
+    header_font = Font(bold=True, color="FFFFFF", size=12, name="微软雅黑")
+    header_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # 数据行样式
+    data_font = Font(size=11, name="微软雅黑")
+    data_fill_light = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+    data_fill_white = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+    data_alignment = Alignment(horizontal="center", vertical="center")  # 内容居中
+    number_alignment = Alignment(horizontal="center", vertical="center")  # 数字也居中
+    
+    # 设置边框
     thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC')
     )
     
-    # 写入表头
-    headers = ['订单编码*', '订单类型', '微信名*', '微信号', '手机号', '订单信息*', '完成时间*', '数量*', '金额', '备注']
-    required_fields = [True, False, True, False, False, True, True, True, False, False]  # 标记必填字段
+    thick_border = Border(
+        left=Side(style='medium', color='2F5597'),
+        right=Side(style='medium', color='2F5597'),
+        top=Side(style='medium', color='2F5597'),
+        bottom=Side(style='medium', color='2F5597')
+    )
     
-    for field in custom_fields:
-        headers.append(field.name + ('*' if field.required else ''))
-        required_fields.append(field.required)
+    # 应用标题行样式
+    for col_idx, cell in enumerate(ws1[1], 1):
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thick_border
+        cell.font = header_font  # 统一使用白色字体
     
-    for col_idx, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_idx, value=header)
+    # 设置列宽
+    column_widths = {
+        'A': 18,  # *订单编码
+        'B': 12,  # *订单类型
+        'C': 15,  # *微信名
+        'D': 15,  # *手机号
+        'E': 25,  # *订单信息
+        'F': 12,  # *完成时间
+        'G': 8,   # *数量
+        'H': 10,  # 金额
+        'I': 20   # 备注
+    }
+    
+    for col, width in column_widths.items():
+        ws1.column_dimensions[col].width = width
+    
+    # 为所有数据单元格添加边框和样式
+    for row_idx, row in enumerate(ws1.iter_rows(min_row=1, max_row=ws1.max_row, min_col=1, max_col=ws1.max_column), 1):
+        for col_idx, cell in enumerate(row, 1):
+            cell.border = thin_border
+            if cell.row > 1:  # 非标题行
+                cell.font = data_font
+                # 交替行颜色
+                if cell.row % 2 == 0:
+                    cell.fill = data_fill_light
+                else:
+                    cell.fill = data_fill_white
+                
+                # 所有内容都居中对齐
+                cell.alignment = data_alignment
+    
+    # 创建字段说明sheet
+    ws2 = wb.create_sheet(title="字段说明")
+    
+    instructions_data = {
+        '字段名': ['订单编号', '订单类型', '*微信名', '*手机号', '完成时间', '数量', '金额', '备注'],
+        '说明': [
+            '系统自动生成，无需填写',
+            '订单类型：海报/名片/宣传册等',
+            '客户微信昵称（必填，标*为红色）',
+            '客户手机号（必填，标*为红色）',
+            '订单完成时间（YYYY-MM-DD格式，默认当前日期）',
+            '商品数量（整数）',
+            '订单金额（数字）',
+            '备注信息'
+        ],
+        '是否必填': ['否', '否', '是', '是', '否', '否', '否', '否'],
+        '数据类型': ['文本', '文本', '文本', '文本', '日期', '数字', '数字', '文本']
+    }
+    
+    instructions_df = pd.DataFrame(instructions_data)
+    
+    # 将说明数据写入工作表
+    for r in dataframe_to_rows(instructions_df, index=False, header=True):
+        ws2.append(r)
+    
+    # 应用说明sheet样式
+    for cell in ws2[1]:
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = header_alignment
-        cell.border = thin_border
+        cell.border = thick_border
     
-    # 写入一行示例数据
-    from datetime import datetime
-    current_date = datetime.now().strftime('%Y-%m-%d')
-    example = ['ORD20230101', '普通订单', '张三', 'zhangsan123', '13800138000', '产品A x 2', current_date, '2', '100', '订单备注信息']
-    for field in custom_fields:
-        if field.field_type == 'text':
-            example.append('文本示例')
-        elif field.field_type == 'number':
-            example.append('10')
-        elif field.field_type == 'date':
-            example.append('2023-01-01')
+    # 设置说明sheet列宽
+    ws2.column_dimensions['A'].width = 15
+    ws2.column_dimensions['B'].width = 45
+    ws2.column_dimensions['C'].width = 12
+    ws2.column_dimensions['D'].width = 12
     
-    for col_idx, value in enumerate(example, 1):
-        cell = ws.cell(row=2, column=col_idx, value=value)
-        cell.font = data_font
-        cell.alignment = data_alignment
-        cell.border = thin_border
+    # 为说明sheet所有单元格添加边框和样式
+    for row_idx, row in enumerate(ws2.iter_rows(min_row=1, max_row=ws2.max_row, min_col=1, max_col=ws2.max_column), 1):
+        for col_idx, cell in enumerate(row, 1):
+            cell.border = thin_border
+            if cell.row > 1:
+                cell.font = data_font
+                # 交替行颜色
+                if cell.row % 2 == 0:
+                    cell.fill = data_fill_light
+                else:
+                    cell.fill = data_fill_white
+                
+                # 设置对齐和换行
+                if col_idx == 2:  # 说明列
+                    cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+                else:
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
     
-    # 设置列宽
-    column_widths = [15, 12, 12, 15, 15, 20, 12, 8, 10, 20]
-    for field in custom_fields:
-        if field.field_type == 'text':
-            column_widths.append(20)
-        elif field.field_type == 'number':
-            column_widths.append(10)
-        elif field.field_type == 'date':
-            column_widths.append(12)
-        else:
-            column_widths.append(15)
-    
-    for i, width in enumerate(column_widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = width
-    
-    # 创建响应
+    # 保存到BytesIO
     output = BytesIO()
     wb.save(output)
     output.seek(0)
     
-    response = current_app.response_class(
-        output.getvalue(),
+    return send_file(
+        output,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers={'Content-Disposition': 'attachment;filename=order_template.xlsx'}
+        as_attachment=True,
+        download_name=f'订单导入模板_{datetime.now().strftime("%Y%m%d")}.xlsx'
     )
-    
-    return response
 
 @main.route('/orders/export')
 @login_required
 def export_orders():
-    from io import BytesIO
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
+    """导出订单数据"""
+    # 所有登录用户都可以导出订单
+    # 普通用户只能导出自己的订单，管理员可以导出所有订单
     
-    # 获取筛选参数
-    user_id = request.args.get('user_id', type=int)
+    import pandas as pd
+    from io import BytesIO
+    
+    # 获取查询参数
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
-    wechat_name = request.args.get('wechat_name', '').strip()
-    phone = request.args.get('phone', '').strip()
+    user_id = request.args.get('user_id', type=int)
     
-    # 构建查询（复用订单列表的筛选逻辑）
+    # 构建查询
     query = Order.query
     
-    # 权限控制
+    # 权限控制：普通用户只能导出自己的订单
     if current_user.can(Permission.VIEW_ALL):
-        # 管理员可以查看所有订单，可以按用户筛选
+        # 管理员可以按用户筛选
         if user_id:
             query = query.filter(Order.user_id == user_id)
     else:
-        # 普通用户只能查看自己的订单
+        # 普通用户只能导出自己的订单
         query = query.filter(Order.user_id == current_user.id)
     
-    # 日期筛选
     if start_date:
         try:
             start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            query = query.filter(Order.create_time >= start_dt)
+            query = query.filter(Order.completion_time >= start_dt)
         except ValueError:
-            pass
+            flash('开始日期格式错误', 'danger')
     
     if end_date:
         try:
-            end_dt = datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S')
-            query = query.filter(Order.create_time <= end_dt)
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            query = query.filter(Order.completion_time <= end_dt)
         except ValueError:
-            pass
+            flash('结束日期格式错误', 'danger')
     
-    # 微信用户筛选
-    if wechat_name:
-        query = query.filter(Order.wechat_name.contains(wechat_name))
-    
-    # 手机号筛选（支持模糊搜索）
-    if phone:
-        query = query.filter(Order.phone.contains(phone))
-    
-    # 获取筛选后的订单
     orders = query.order_by(Order.create_time.desc()).all()
     
-    # 获取所有字段（包括默认字段和自定义字段）
-    custom_fields = OrderField.query.filter_by(is_default=False).order_by(OrderField.order).all()
+    # 准备导出数据
+    export_data = []
+    for order in orders:
+        # 解析自定义字段
+        custom_fields = {}
+        if order.custom_fields:
+            try:
+                custom_fields = json.loads(order.custom_fields)
+            except:
+                custom_fields = {}
+        
+        row = {
+            '订单编号': order.order_code,
+            '微信名': order.wechat_name,
+            '微信号': order.wechat_id,
+            '手机号': order.phone,
+            '订单信息': order.order_info,
+            '完成时间': order.completion_time.strftime('%Y-%m-%d') if order.completion_time else '',
+            '数量': order.quantity,
+            '金额': order.amount,
+            '备注': order.notes,
+            '订单类型': order.order_type.name if order.order_type else '',
+            '状态': order.status,
+            '创建时间': order.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+            '创建用户': order.creator.username if order.creator else ''
+        }
+        
+        # 添加自定义字段
+        for field_name, field_value in custom_fields.items():
+            row[f'自定义_{field_name}'] = field_value
+        
+        export_data.append(row)
     
-    # 创建Excel工作簿和工作表
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "订单数据"
+    if not export_data:
+        flash('没有找到符合条件的订单', 'warning')
+        return redirect(url_for('main.order_list'))
     
-    # 定义样式
-    header_font = Font(name='微软雅黑', size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
-    header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    df = pd.DataFrame(export_data)
     
-    data_font = Font(name='微软雅黑', size=10)
-    data_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    # 创建工作簿
+    wb = Workbook()
     
+    # 创建订单数据sheet
+    ws1 = wb.active
+    ws1.title = "订单数据"
+    
+    # 将数据写入工作表
+    for r in dataframe_to_rows(df, index=False, header=True):
+        ws1.append(r)
+    
+    # 设置丰富的样式
+    header_font = Font(bold=True, color="FFFFFF", size=12, name="微软雅黑")
+    header_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # 数据行样式
+    data_font = Font(size=10, name="微软雅黑")
+    data_fill_light = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+    data_fill_white = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+    data_alignment = Alignment(horizontal="left", vertical="center")
+    number_alignment = Alignment(horizontal="right", vertical="center")
+    date_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # 设置边框
     thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC')
     )
     
-    # 写入表头
-    headers = ['订单编码', '订单类型', '微信名', '微信号', '手机号', '订单信息', '完成时间', '数量', '金额', '备注', '创建时间']
-    # 如果是管理员，添加提交用户列
-    if current_user.can(Permission.VIEW_ALL):
-        headers.append('提交用户')
-    for field in custom_fields:
-        headers.append(field.name)
+    thick_border = Border(
+        left=Side(style='medium', color='2F5597'),
+        right=Side(style='medium', color='2F5597'),
+        top=Side(style='medium', color='2F5597'),
+        bottom=Side(style='medium', color='2F5597')
+    )
     
-    for col_idx, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_idx, value=header)
+    # 应用标题行样式
+    for cell in ws1[1]:
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = header_alignment
-        cell.border = thin_border
-    
-    # 写入订单数据
-    for row_idx, order in enumerate(orders, 2):
-        data = [
-            order.order_code,
-            order.order_type.name if order.order_type else '未分类',
-            order.wechat_name,
-            order.wechat_id or '',
-            order.phone or '',
-            order.order_info,
-            order.completion_time.strftime('%Y-%m-%d') if order.completion_time else '',
-            order.quantity,
-            order.amount if order.amount else '',
-            order.notes or '',
-            order.create_time.strftime('%Y-%m-%d %H:%M')
-        ]
-        
-        # 如果是管理员，添加提交用户信息
-        if current_user.can(Permission.VIEW_ALL):
-            data.append(order.creator.username if order.creator else '')
-        
-        # 添加自定义字段值
-        for field in custom_fields:
-            value = order.get_custom_field(field.name)
-            if value is not None:
-                if isinstance(value, datetime):
-                    value = value.strftime('%Y-%m-%d')
-                data.append(value)
-            else:
-                data.append('')
-        
-        for col_idx, value in enumerate(data, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            cell.font = data_font
-            cell.alignment = data_alignment
-            cell.border = thin_border
+        cell.border = thick_border
     
     # 设置列宽
-    column_widths = [15, 12, 12, 15, 12, 25, 12, 8, 10, 20, 18]  # 添加手机号和备注的列宽
-    # 如果是管理员，添加提交用户列宽
-    if current_user.can(Permission.VIEW_ALL):
-        column_widths.append(12)
-    for field in custom_fields:
-        if field.field_type == 'text':
-            column_widths.append(20)
-        elif field.field_type == 'number':
-            column_widths.append(10)
-        elif field.field_type == 'date':
-            column_widths.append(12)
-        else:
-            column_widths.append(15)
+    column_widths = {
+        'A': 18,  # 订单编号
+        'B': 12,  # 微信名
+        'C': 15,  # 微信号
+        'D': 15,  # 手机号
+        'E': 25,  # 订单信息
+        'F': 12,  # 完成时间
+        'G': 8,   # 数量
+        'H': 12,  # 金额
+        'I': 20,  # 备注
+        'J': 12,  # 订单类型
+        'K': 10,  # 状态
+        'L': 18,  # 创建时间
+        'M': 12   # 创建用户
+    }
     
-    for i, width in enumerate(column_widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = width
+    for col, width in column_widths.items():
+        if col in [chr(65+i) for i in range(ws1.max_column)]:
+            ws1.column_dimensions[col].width = width
     
-    # 创建响应
+    # 为所有数据单元格添加边框和样式
+    for row_idx, row in enumerate(ws1.iter_rows(min_row=1, max_row=ws1.max_row, min_col=1, max_col=ws1.max_column), 1):
+        for col_idx, cell in enumerate(row, 1):
+            cell.border = thin_border
+            if cell.row > 1:  # 非标题行
+                cell.font = data_font
+                # 交替行颜色
+                if cell.row % 2 == 0:
+                    cell.fill = data_fill_light
+                else:
+                    cell.fill = data_fill_white
+                
+                # 根据列类型设置对齐方式
+                if col_idx in [7, 8]:  # 数量和金额列
+                    cell.alignment = number_alignment
+                elif col_idx in [6, 12]:  # 完成时间和创建时间列
+                    cell.alignment = date_alignment
+                else:
+                    cell.alignment = data_alignment
+    
+    # 创建统计信息sheet
+    ws2 = wb.create_sheet(title="统计信息")
+    
+    # 添加统计信息
+    stats_data = {
+        '统计项': ['总订单数', '总金额', '平均金额', '总数量'],
+        '数值': [
+            len(export_data),
+            sum(row['金额'] for row in export_data if row['金额']),
+            round(sum(row['金额'] for row in export_data if row['金额']) / len(export_data), 2) if export_data else 0,
+            sum(row['数量'] for row in export_data if row['数量'])
+        ]
+    }
+    
+    stats_df = pd.DataFrame(stats_data)
+    
+    # 将统计数据写入工作表
+    for r in dataframe_to_rows(stats_df, index=False, header=True):
+        ws2.append(r)
+    
+    # 应用统计sheet样式
+    for cell in ws2[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thick_border
+    
+    # 设置统计sheet列宽
+    ws2.column_dimensions['A'].width = 15
+    ws2.column_dimensions['B'].width = 15
+    
+    # 为统计sheet所有单元格添加边框和样式
+    for row_idx, row in enumerate(ws2.iter_rows(min_row=1, max_row=ws2.max_row, min_col=1, max_col=ws2.max_column), 1):
+        for col_idx, cell in enumerate(row, 1):
+            cell.border = thin_border
+            if cell.row > 1:
+                cell.font = data_font
+                # 交替行颜色
+                if cell.row % 2 == 0:
+                    cell.fill = data_fill_light
+                else:
+                    cell.fill = data_fill_white
+                
+                # 数值列右对齐
+                if col_idx == 2:
+                    cell.alignment = number_alignment
+                else:
+                    cell.alignment = data_alignment
+    
+    # 保存到BytesIO
     output = BytesIO()
     wb.save(output)
     output.seek(0)
     
-    response = current_app.response_class(
-        output.getvalue(),
+    return send_file(
+        output,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers={'Content-Disposition': 'attachment;filename=orders.xlsx'}
+        as_attachment=True,
+        download_name=f'订单导出_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
     )
-    
-    return response
 
 @main.route('/orders/import', methods=['GET', 'POST'])
 @login_required
 def import_orders():
+    """导入订单数据"""
+    # 所有登录用户都可以导入订单
+    # 普通用户导入的订单将归属于自己
+    
     if request.method == 'POST':
-        try:
-            if 'file' not in request.files:
-                flash('没有选择文件', 'danger')
-                return redirect(request.url)
-            
-            file = request.files['file']
-            if file.filename == '':
-                flash('没有选择文件', 'danger')
-                return redirect(request.url)
-            
-            filename = file.filename.lower()
-            if file and (filename.endswith('.csv') or filename.endswith('.xlsx')):
-                # 准备导入数据
+        if 'file' not in request.files:
+            flash('没有选择文件', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['file']
+        if file.filename == '':
+            flash('没有选择文件', 'danger')
+            return redirect(request.url)
+        
+        if file and allowed_file(file.filename):
+            try:
+                import pandas as pd
+                
+                # 检查文件扩展名
+                file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+                
+                # 读取文件
+                if file_ext in ['xlsx', 'xls']:
+                    df = pd.read_excel(file)
+                elif file_ext == 'csv':
+                    df = pd.read_csv(file, encoding='utf-8')
+                else:
+                    flash(f'不支持的文件格式：{file_ext}。请使用Excel(.xlsx/.xls)或CSV(.csv)格式', 'danger')
+                    return redirect(request.url)
+                
+                # 检查文件是否为空
+                if df.empty:
+                    flash('文件内容为空，请检查文件是否正确', 'danger')
+                    return redirect(request.url)
+                
+                # 检查必要的列是否存在
+                required_cols = ['*微信名', '*手机号', '*订单编码', '*订单信息', '*订单类型', '*完成时间', '*数量']
+                missing_cols = []
+                for col in required_cols:
+                    if col not in df.columns and col.replace('*', '') not in df.columns:
+                        missing_cols.append(col)
+                
+                if missing_cols:
+                    flash(f'文件缺少必要的列：{", ".join(missing_cols)}。请检查模板格式', 'danger')
+                    return redirect(request.url)
+                
                 success_count = 0
                 error_count = 0
-                error_messages = []
+                errors = []
                 
-                # 获取自定义字段
-                custom_fields = OrderField.query.filter_by(is_default=False).all()
-                custom_field_names = [field.name for field in custom_fields]
+                # 获取订单类型映射
+                order_types = {ot.name: ot.id for ot in OrderType.query.all()}
                 
-                # 根据文件类型处理数据
-                if filename.endswith('.xlsx'):
-                    # 处理Excel文件
-                    import openpyxl
-                    from io import BytesIO
-                    
-                    # 读取Excel文件内容
-                    wb = openpyxl.load_workbook(BytesIO(file.read()))
-                    ws = wb.active
-                    
-                    # 读取表头
-                    headers = [cell.value for cell in ws[1]]
-                    
-                    # 处理每一行数据
-                    for i, row in enumerate(ws.iter_rows(min_row=2), start=2):
-                        row_data = [cell.value for cell in row]
+                for index, row in df.iterrows():
+                    try:
+                        # 检查必填字段（支持带星号的列名）
+                        phone_col = '*手机号' if '*手机号' in df.columns else '手机号'
+                        wechat_col = '*微信名' if '*微信名' in df.columns else '微信名'
+                        order_code_col = '*订单编码' if '*订单编码' in df.columns else '订单编码'
+                        order_info_col = '*订单信息' if '*订单信息' in df.columns else '订单信息'
+                        order_type_col = '*订单类型' if '*订单类型' in df.columns else '订单类型'
+                        completion_time_col = '*完成时间' if '*完成时间' in df.columns else '完成时间'
+                        quantity_col = '*数量' if '*数量' in df.columns else '数量'
                         
-                        if not any(row_data):  # 跳过空行
-                            continue
-                        
-                        # 确保行数据与表头数量一致
-                        while len(row_data) < len(headers):
-                            row_data.append('')
-                        
-                        try:
-                            if len(row_data) < 10:  # 至少需要10个默认字段（包含手机号和备注）
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 字段数量不足')
-                                continue
-                            
-                            # 查找订单类型
-                            order_type = None
-                            if row_data[1]:  # 订单类型字段
-                                order_type = OrderType.query.filter_by(name=row_data[1]).first()
-                            
-                            # 验证必填字段
-                            if not row_data[0]:  # 订单编码
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 订单编码不能为空')
-                                continue
-                            
-                            if not row_data[2]:  # 微信名
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 微信名不能为空')
-                                continue
-                            
-                            if not row_data[5]:  # 订单信息
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 订单信息不能为空')
-                                continue
-                            
-                            if not row_data[6]:  # 完成时间
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 完成时间不能为空')
-                                continue
-                            
-                            if not row_data[7]:  # 数量
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 数量不能为空')
-                                continue
-                            
-                            # 检查订单编码是否已存在
-                            existing_order = Order.query.filter_by(order_code=row_data[0]).first()
-                            if existing_order:
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 订单编码 {row_data[0]} 已存在')
-                                continue
-                            
-                            # 处理手机号
-                            phone_value = str(row_data[4]) if row_data[4] else ''
-                            
-                            # 创建新订单
-                            order = Order(
-                                order_code=row_data[0],
-                                order_type_id=order_type.id if order_type else None,
-                                wechat_name=row_data[2],
-                                wechat_id=row_data[3] if row_data[3] else None,
-                                phone=phone_value,
-                                order_info=row_data[5],
-                                completion_time=datetime.strptime(row_data[6], '%Y-%m-%d') if row_data[6] else None,
-                                quantity=int(row_data[7]) if row_data[7] else 0,
-                                amount=float(row_data[8]) if row_data[8] else None,
-                                notes=row_data[9] if row_data[9] else None,
-                                user_id=current_user.id
-                            )
-                            
-                            # 处理自定义字段
-                            for j, field_name in enumerate(headers[10:], start=10):
-                                if j < len(row_data) and field_name in custom_field_names and row_data[j]:
-                                    field = next((f for f in custom_fields if f.name == field_name), None)
-                                    if field:
-                                        if field.field_type == 'number':
-                                            order.set_custom_field(field_name, float(row_data[j]))
-                                        elif field.field_type == 'date':
-                                            order.set_custom_field(field_name, datetime.strptime(row_data[j], '%Y-%m-%d'))
-                                        else:
-                                            order.set_custom_field(field_name, row_data[j])
-                            
-                            db.session.add(order)
-                            success_count += 1
-                            
-                        except Exception as e:
+                        if pd.isna(row.get(phone_col)) or str(row.get(phone_col)).strip() == '':
+                            errors.append(f"第{index+2}行：手机号不能为空")
                             error_count += 1
-                            error_messages.append(f'第{i}行: {str(e)}')
-                
-                elif filename.endswith('.csv'):
-                    # 处理CSV文件
-                    import csv
-                    from io import StringIO
-                    import codecs
-                
-                    # 读取CSV文件，尝试多种编码
-                    encodings = ['utf-8-sig', 'gbk', 'gb2312', 'latin-1']
-                    for encoding in encodings:
-                        try:
-                            # 重置文件指针到开始位置
-                            file.stream.seek(0)
-                            stream = codecs.iterdecode(file.stream, encoding)
-                            # 尝试读取第一行来验证编码
-                            test_reader = csv.reader(stream)
-                            next(test_reader)
-                            
-                            # 如果没有抛出异常，说明编码正确
-                            file.stream.seek(0)
-                            stream = codecs.iterdecode(file.stream, encoding)
-                            reader = csv.reader(stream)
-                            break
-                        except UnicodeDecodeError:
-                            continue
-                    else:
-                        # 如果所有编码都失败
-                        flash('无法识别文件编码，请确保文件使用UTF-8、GBK或GB2312编码，或尝试使用Excel格式', 'danger')
-                        return redirect(request.url)
-                    
-                    # 获取表头
-                    headers = next(reader)
-                    
-                    # 处理每一行数据
-                    for i, row in enumerate(reader, start=2):
-                        if not any(row):  # 跳过空行
                             continue
                         
-                        # 确保行数据与表头数量一致
-                        while len(row) < len(headers):
-                            row.append('')
-                        
-                        try:
-                            if len(row) < 10:  # 至少需要10个默认字段（包含手机号和备注）
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 字段数量不足')
-                                continue
-                            
-                            # 查找订单类型
-                            order_type = None
-                            if row[1]:  # 订单类型字段
-                                order_type = OrderType.query.filter_by(name=row[1]).first()
-                            
-                            # 验证必填字段
-                            if not row[0]:  # 订单编码
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 订单编码不能为空')
-                                continue
-                            
-                            if not row[2]:  # 微信名
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 微信名不能为空')
-                                continue
-                            
-                            if not row[5]:  # 订单信息
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 订单信息不能为空')
-                                continue
-                            
-                            if not row[6]:  # 完成时间
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 完成时间不能为空')
-                                continue
-                            
-                            if not row[7]:  # 数量
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 数量不能为空')
-                                continue
-                            
-                            # 检查订单编码是否已存在
-                            existing_order = Order.query.filter_by(order_code=row[0]).first()
-                            if existing_order:
-                                error_count += 1
-                                error_messages.append(f'第{i}行: 订单编码 {row[0]} 已存在')
-                                continue
-                            
-                            # 处理手机号
-                            phone_value = str(row[4]) if row[4] else ''
-                            
-                            # 创建新订单
-                            order = Order(
-                                order_code=row[0],
-                                order_type_id=order_type.id if order_type else None,
-                                wechat_name=row[2],
-                                wechat_id=row[3] if row[3] else None,
-                                phone=phone_value,
-                                order_info=row[5],
-                                completion_time=datetime.strptime(row[6], '%Y-%m-%d') if row[6] else None,
-                                quantity=int(row[7]) if row[7] else 0,
-                                amount=float(row[8]) if row[8] else None,
-                                notes=row[9] if row[9] else None,
-                                user_id=current_user.id
-                            )
-                            
-                            # 处理自定义字段
-                            for j, field_name in enumerate(headers[10:], start=10):
-                                if j < len(row) and field_name in custom_field_names and row[j]:
-                                    field = next((f for f in custom_fields if f.name == field_name), None)
-                                    if field:
-                                        if field.field_type == 'number':
-                                            order.set_custom_field(field_name, float(row[j]))
-                                        elif field.field_type == 'date':
-                                            order.set_custom_field(field_name, datetime.strptime(row[j], '%Y-%m-%d'))
-                                        else:
-                                            order.set_custom_field(field_name, row[j])
-                            
-                            db.session.add(order)
-                            success_count += 1
-                        
-                        except Exception as e:
+                        if pd.isna(row.get(wechat_col)) or str(row.get(wechat_col)).strip() == '':
+                            errors.append(f"第{index+2}行：微信名不能为空")
                             error_count += 1
-                            error_messages.append(f'第{i}行: {str(e)}')
+                            continue
+                        
+                        if pd.isna(row.get(order_code_col)) or str(row.get(order_code_col)).strip() == '':
+                            errors.append(f"第{index+2}行：订单编码不能为空")
+                            error_count += 1
+                            continue
+                        
+                        if pd.isna(row.get(order_info_col)) or str(row.get(order_info_col)).strip() == '':
+                            errors.append(f"第{index+2}行：订单信息不能为空")
+                            error_count += 1
+                            continue
+                        
+                        if pd.isna(row.get(order_type_col)) or str(row.get(order_type_col)).strip() == '':
+                            errors.append(f"第{index+2}行：订单类型不能为空")
+                            error_count += 1
+                            continue
+                        
+                        if pd.isna(row.get(completion_time_col)) or str(row.get(completion_time_col)).strip() == '':
+                            errors.append(f"第{index+2}行：完成时间不能为空")
+                            error_count += 1
+                            continue
+                        
+                        if pd.isna(row.get(quantity_col)) or str(row.get(quantity_col)).strip() == '':
+                            errors.append(f"第{index+2}行：数量不能为空")
+                            error_count += 1
+                            continue
+                        
+                        # 处理完成时间
+                        completion_time = None
+                        if not pd.isna(row.get(completion_time_col)):
+                            try:
+                                if isinstance(row[completion_time_col], str):
+                                    completion_time = datetime.strptime(row[completion_time_col], '%Y-%m-%d')
+                                else:
+                                    completion_time = pd.to_datetime(row[completion_time_col]).to_pydatetime()
+                            except:
+                                pass
+                        
+                        # 处理订单类型
+                        order_type_id = None
+                        if not pd.isna(row.get(order_type_col)):
+                            order_type_name = str(row[order_type_col]).strip()
+                            order_type_id = order_types.get(order_type_name)
+                        
+                        # 创建订单（使用正确的列名，处理NaN值）
+                        order = Order(
+                            order_code=str(row.get(order_code_col, '')).strip() if not pd.isna(row.get(order_code_col)) else '',
+                            wechat_name=str(row.get(wechat_col, '')).strip() if not pd.isna(row.get(wechat_col)) else '',
+                            wechat_id=str(row.get('微信号', '')).strip() if not pd.isna(row.get('微信号')) else '',
+                            phone=str(row.get(phone_col, '')).strip() if not pd.isna(row.get(phone_col)) else '',
+                            order_info=str(row.get(order_info_col, '')).strip() if not pd.isna(row.get(order_info_col)) else '',
+                            completion_time=completion_time,
+                            quantity=int(row.get(quantity_col, 0)) if not pd.isna(row.get(quantity_col)) else None,
+                            amount=float(row.get('金额', 0)) if not pd.isna(row.get('金额')) else None,
+                            notes=str(row.get('备注', '')).strip() if not pd.isna(row.get('备注')) else '',
+                            user_id=current_user.id,
+                            order_type_id=order_type_id,
+                            status=str(row.get('状态', '未完成')).strip() if not pd.isna(row.get('状态')) else '未完成'
+                        )
+                        
+                        db.session.add(order)
+                        success_count += 1
+                        
+                    except Exception as e:
+                        errors.append(f"第{index+1}行：{str(e)}")
+                        error_count += 1
                 
-                # 处理导入结果
-                if success_count > 0:
-                    db.session.commit()
-                    flash(f'成功导入{success_count}条订单记录', 'success')
+                db.session.commit()
                 
-                if error_count > 0:
-                    flash(f'导入过程中有{error_count}条记录出错', 'warning')
-                    for msg in error_messages[:10]:  # 只显示前10条错误信息
-                        flash(msg, 'danger')
-                    if len(error_messages) > 10:
-                        flash(f'... 还有 {len(error_messages) - 10} 条错误信息未显示', 'info')
+                flash(f'导入完成！成功：{success_count}条，失败：{error_count}条', 'success')
+                
+                if errors:
+                    flash('错误详情：' + '; '.join(errors[:10]), 'warning')
+                    if len(errors) > 10:
+                        flash(f'...还有{len(errors)-10}个错误', 'warning')
                 
                 return redirect(url_for('main.order_list'))
-            else:
-                flash('请上传CSV或Excel(XLSX)格式的文件', 'danger')
+                
+            except pd.errors.EmptyDataError:
+                flash('文件内容为空或格式不正确，请检查文件', 'danger')
                 return redirect(request.url)
-        except Exception as e:
-            current_app.logger.error(f"导入订单时发生错误: {str(e)}")
-            flash(f'导入过程中发生错误: {str(e)}', 'danger')
+            except pd.errors.ParserError as e:
+                flash(f'文件解析失败：{str(e)}。请检查文件格式是否正确', 'danger')
+                return redirect(request.url)
+            except UnicodeDecodeError:
+                flash('文件编码错误，请保存为UTF-8编码的CSV文件或使用Excel格式', 'danger')
+                return redirect(request.url)
+            except FileNotFoundError:
+                flash('文件未找到，请重新选择文件', 'danger')
+                return redirect(request.url)
+            except PermissionError:
+                flash('文件被占用，请关闭文件后重试', 'danger')
+                return redirect(request.url)
+            except Exception as e:
+                error_msg = str(e)
+                if 'Excel file format cannot be determined' in error_msg:
+                    flash('Excel文件格式无法识别，请确保文件未损坏', 'danger')
+                elif 'No such file or directory' in error_msg:
+                    flash('文件路径错误或文件不存在', 'danger')
+                elif 'BadZipFile' in error_msg:
+                    flash('Excel文件已损坏，请重新保存文件', 'danger')
+                else:
+                    flash(f'文件处理失败：{error_msg}', 'danger')
+                return redirect(request.url)
+        else:
+            flash('不支持的文件格式', 'danger')
             return redirect(request.url)
     
     return render_template('main/import_orders.html')
@@ -1029,273 +1191,264 @@ def import_orders():
 @main.route('/order/image/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_image(id):
+    """删除订单图片"""
     image = OrderImage.query.get_or_404(id)
-    order = Order.query.get(image.order_id)
+    order = image.order
     
-    # 检查权限
+    # 权限检查
     if not current_user.can(Permission.VIEW_ALL) and order.user_id != current_user.id:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': '权限不足'})
         abort(403)
     
-    # 删除图片文件
     try:
-        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], image.image_path.replace('uploads/', ''))
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # 删除文件
+        image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], image.image_path.replace('uploads/', ''))
+        if os.path.exists(image_path):
+            os.remove(image_path)
+        
+        db.session.delete(image)
+        db.session.commit()
+        
+        # 根据请求类型返回不同响应
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'message': '图片删除成功！'})
+        else:
+            flash('图片删除成功！', 'success')
+            return redirect(url_for('main.edit_order', id=order.id))
+            
     except Exception as e:
-        current_app.logger.error(f"删除图片文件失败: {e}")
-    
-    db.session.delete(image)
-    db.session.commit()
-    
-    return jsonify({'success': True})
+        db.session.rollback()
+        print(f"删除图片失败: {e}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': f'删除失败：{str(e)}'})
+        else:
+            flash(f'删除失败：{str(e)}', 'error')
+            return redirect(url_for('main.edit_order', id=order.id))
 
 @main.route('/quick_add', methods=['POST'])
 @login_required
 def quick_add_order():
-    # 快速添加订单的API
-    if not request.is_json:
-        return jsonify({'error': '请求必须是JSON格式'}), 400
-    
-    data = request.json
-    required_fields = ['order_code', 'wechat_name', 'wechat_id', 'order_info', 'quantity', 'amount']
-    
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'error': f'缺少必填字段: {field}'}), 400
-    
+    """快速添加订单的API"""
     try:
+        # 生成订单编号
+        order_code = f"ORD{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:8].upper()}"
+        
+        # 创建订单
         order = Order(
-            order_code=data['order_code'],
-            wechat_name=data['wechat_name'],
-            wechat_id=data['wechat_id'],
-            order_info=data['order_info'],
-            completion_time=datetime.strptime(data.get('completion_time', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d'),
-            quantity=int(data['quantity']),
-            amount=float(data['amount']),
-            user_id=current_user.id
+            order_code=order_code,
+            wechat_name=request.form.get('wechat_name', '').strip(),
+            wechat_id=request.form.get('wechat_id', '').strip(),
+            phone=request.form.get('phone', '').strip(),
+            order_info=request.form.get('order_info', '').strip(),
+            quantity=request.form.get('quantity', type=int),
+            amount=request.form.get('amount', type=float),
+            notes=request.form.get('notes', '').strip(),
+            user_id=current_user.id,
+            order_type_id=request.form.get('order_type_id', type=int)
         )
         
-        # 处理自定义字段
-        custom_fields = OrderField.query.filter_by(is_default=False).all()
-        for field in custom_fields:
-            if field.name in data:
-                order.set_custom_field(field.name, data[field.name])
+        # 处理完成时间
+        completion_time_str = request.form.get('completion_time')
+        if completion_time_str:
+            try:
+                order.completion_time = datetime.strptime(completion_time_str, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'message': '完成时间格式错误'})
         
         db.session.add(order)
         db.session.commit()
         
         return jsonify({
             'success': True,
+            'message': '订单创建成功！',
             'order_id': order.id,
-            'message': '订单已成功添加'
+            'order_code': order.order_code
         })
+        
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'添加订单失败: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': f'创建失败：{str(e)}'})
 
 @main.route('/uploads/<path:filename>')
+@login_required
 def uploaded_file(filename):
-    """提供上传图片的访问服务"""
-    # 如果filename以'uploads/'开头，去掉这个前缀
-    if filename.startswith('uploads/'):
-        filename = filename[8:]  # 去掉'uploads/'前缀
+    """提供上传文件访问"""
+    # 安全检查：防止路径遍历攻击
+    if '..' in filename or filename.startswith('/'):
+        abort(404)
+    
+    # 检查文件是否存在
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        abort(404)
+    
+    # 验证文件扩展名
+    if not allowed_file(filename):
+        abort(403)
+    
     return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
 
 @main.route('/order/update_status/<int:order_id>', methods=['POST'])
-@csrf.exempt
 @login_required
 def update_order_status(order_id):
-    """修改订单状态（管理员可用）"""
-    # 调试信息
-    print(f"\n=== 调试信息 - 修改订单状态 ===")
-    print(f"订单ID: {order_id}")
-    print(f"请求方法: {request.method}")
-    print(f"Content-Type: {request.content_type}")
-    print(f"is_json: {request.is_json}")
-    print(f"request.json: {request.json}")
-    print(f"request.form: {dict(request.form)}")
-    print(f"request.data: {request.data}")
-    print(f"当前用户: {current_user.username if current_user.is_authenticated else 'None'}")
-    print(f"用户权限: {current_user.can(Permission.ADMIN) if current_user.is_authenticated else 'None'}")
-    
-    # 检查权限：只有管理员才能修改状态
-    if not current_user.can(Permission.ADMIN):
-        print("错误: 权限不足")
-        return jsonify({'error': '权限不足'}), 403
-    
+    """更新订单状态"""
     order = Order.query.get_or_404(order_id)
-    print(f"找到订单: {order.order_code}，当前状态: {getattr(order, 'status', '无状态字段')}")
     
-    # 支持JSON和表单数据
-    new_status = None
-    if request.is_json and request.json:
-        new_status = request.json.get('status')
-        print(f"使用JSON数据: {request.json}")
-    elif request.form:
-        new_status = request.form.get('status')
-        print(f"使用表单数据: {dict(request.form)}")
-    
-    print(f"获取到的状态: {new_status}")
-    
-    if not new_status:
-        print("错误: 状态为空")
-        return jsonify({'error': '缺少状态参数'}), 400
-    
-    # 验证状态值
-    valid_statuses = ['已结算', '未结算', '未完成']
-    if new_status not in valid_statuses:
-        print(f"错误: 无效状态值 {new_status}，有效值: {valid_statuses}")
-        return jsonify({'error': '无效的订单状态'}), 400
+    # 权限检查
+    if not current_user.can(Permission.VIEW_ALL) and order.user_id != current_user.id:
+        return jsonify({'success': False, 'error': '权限不足'})
     
     try:
-        old_status = getattr(order, 'status', '无状态字段')
+        # 支持JSON和表单数据
+        if request.is_json:
+            data = request.get_json()
+            new_status = data.get('status')
+        else:
+            new_status = request.form.get('status')
+        
+        if not new_status:
+            return jsonify({'success': False, 'error': '状态不能为空'})
+        
+        # 验证状态值
+        valid_statuses = ['未完成', '已完成', '已结算', '未结算']
+        if new_status not in valid_statuses:
+            return jsonify({'success': False, 'error': '无效的状态值'})
+        
         order.status = new_status
         
-        # 如果状态改为已结算，设置结算时间
-        if new_status == '已结算':
-            if hasattr(order, 'settle_time'):
-                order.settle_time = datetime.utcnow()
-        elif new_status in ['未完成', '未结算']:
-            if hasattr(order, 'settle_time'):
-                order.settle_time = None
+        # 如果状态改为已完成，自动设置完成时间
+        if new_status == '已完成' and not order.completion_time:
+            order.completion_time = datetime.now()
         
         db.session.commit()
-        print(f"状态更新成功: {old_status} -> {new_status}")
-        print("=== 调试信息结束 ===\n")
         
         return jsonify({
             'success': True,
-            'message': f'订单状态已更新为：{new_status}'
+            'message': '状态更新成功',
+            'new_status': new_status,
+            'completion_time': order.completion_time.strftime('%Y-%m-%d') if order.completion_time else None
         })
+        
     except Exception as e:
         db.session.rollback()
-        print(f"异常错误: {str(e)}")
-        print(f"异常类型: {type(e)}")
-        import traceback
-        print(f"异常堆栈: {traceback.format_exc()}")
-        print("=== 调试信息结束 ===\n")
-        return jsonify({'error': f'更新失败: {str(e)}'}), 500
+        print(f"更新订单状态失败: {e}")
+        return jsonify({'success': False, 'error': f'更新失败：{str(e)}'})
 
 @main.route('/batch_update_status', methods=['POST'])
-@csrf.exempt
 @login_required
 def batch_update_status():
-    """批量修改订单状态（管理员可用）"""
-    # 调试信息
-    print(f"\n=== 调试信息 - 批量修改订单状态 ===")
-    print(f"请求方法: {request.method}")
-    print(f"Content-Type: {request.content_type}")
-    print(f"is_json: {request.is_json}")
-    print(f"request.json: {request.json}")
-    print(f"request.form: {dict(request.form)}")
-    print(f"request.data: {request.data}")
-    print(f"当前用户: {current_user.username if current_user.is_authenticated else 'None'}")
-    print(f"用户权限: {current_user.can(Permission.ADMIN) if current_user.is_authenticated else 'None'}")
-    
-    # 检查权限：只有管理员才能修改状态
-    if not current_user.can(Permission.ADMIN):
-        print("错误: 权限不足")
-        return jsonify({'error': '权限不足'}), 403
-    
-    if not request.is_json:
-        print("错误: 请求不是JSON格式")
-        return jsonify({'error': '请求必须是JSON格式'}), 400
-    
-    data = request.json
-    print(f"解析的JSON数据: {data}")
-    order_ids = data.get('order_ids', [])
-    new_status = data.get('status')
-    print(f"订单ID列表: {order_ids}")
-    print(f"新状态: {new_status}")
-    
-    if not order_ids:
-        print("错误: 缺少订单ID列表")
-        return jsonify({'error': '缺少订单ID列表'}), 400
-    
-    if not new_status:
-        print("错误: 缺少状态参数")
-        return jsonify({'error': '缺少状态参数'}), 400
-    
-    # 验证状态值
-    valid_statuses = ['已结算', '未结算', '未完成']
-    if new_status not in valid_statuses:
-        print(f"错误: 无效状态值 {new_status}，有效值: {valid_statuses}")
-        return jsonify({'error': '无效的订单状态'}), 400
+    """批量更新订单状态"""
+    if not current_user.can(Permission.VIEW_ALL):
+        return jsonify({'success': False, 'error': '权限不足'})
     
     try:
-        # 批量更新订单状态
-        updated_count = 0
-        print(f"开始批量更新，订单数量: {len(order_ids)}")
+        # 支持JSON和表单数据
+        if request.is_json:
+            data = request.get_json()
+            order_ids = data.get('order_ids', [])
+            new_status = data.get('status')
+        else:
+            order_ids = request.form.getlist('order_ids[]')
+            new_status = request.form.get('status')
+        
+        if not order_ids:
+            return jsonify({'success': False, 'error': '请选择要更新的订单'})
+        
+        if not new_status:
+            return jsonify({'success': False, 'error': '状态不能为空'})
+        
+        # 验证状态值
+        valid_statuses = ['未完成', '已完成', '已结算', '未结算']
+        if new_status not in valid_statuses:
+            return jsonify({'success': False, 'error': '无效的状态值'})
+        
+        success_count = 0
+        error_count = 0
+        
         for order_id in order_ids:
-            order = Order.query.get(order_id)
-            if order:
-                old_status = getattr(order, 'status', '无状态字段')
-                order.status = new_status
-                print(f"订单 {order_id} ({order.order_code}): {old_status} -> {new_status}")
-                updated_count += 1
-            else:
-                print(f"订单 {order_id} 不存在")
+            try:
+                order = Order.query.get(int(order_id))
+                if order:
+                    order.status = new_status
+                    
+                    # 如果状态改为已完成，自动设置完成时间
+                    if new_status == '已完成' and not order.completion_time:
+                        order.completion_time = datetime.now()
+                    
+                    success_count += 1
+                else:
+                    error_count += 1
+            except Exception as e:
+                error_count += 1
+                print(f"更新订单 {order_id} 失败: {e}")
         
         db.session.commit()
-        print(f"批量更新成功，共更新 {updated_count} 个订单")
-        print("=== 调试信息结束 ===\n")
+        
         return jsonify({
             'success': True,
-            'message': f'成功修改了 {updated_count} 个订单的状态为：{new_status}'
+            'message': f'批量更新完成！成功：{success_count}条，失败：{error_count}条'
         })
+        
     except Exception as e:
         db.session.rollback()
-        print(f"异常错误: {str(e)}")
-        print(f"异常类型: {type(e)}")
-        import traceback
-        print(f"异常堆栈: {traceback.format_exc()}")
-        print("=== 调试信息结束 ===\n")
-        return jsonify({'error': f'批量更新失败: {str(e)}'}), 500
+        print(f"批量更新状态失败: {e}")
+        return jsonify({'success': False, 'error': f'批量更新失败：{str(e)}'})
 
 @main.route('/batch_delete_orders', methods=['POST'])
-@csrf.exempt
 @login_required
 def batch_delete_orders():
-    """批量删除订单（管理员可用）"""
-    # 检查权限：只有管理员才能批量删除
-    if not current_user.can(Permission.ADMIN):
-        return jsonify({'error': '权限不足'}), 403
-    
-    if not request.is_json:
-        return jsonify({'error': '请求必须是JSON格式'}), 400
-    
-    data = request.json
-    order_ids = data.get('order_ids', [])
-    
-    if not order_ids:
-        return jsonify({'error': '缺少订单ID列表'}), 400
+    """批量删除订单"""
+    if not current_user.can(Permission.VIEW_ALL):
+        return jsonify({'success': False, 'error': '权限不足'})
     
     try:
-        deleted_count = 0
+        # 支持JSON和表单数据
+        if request.is_json:
+            data = request.get_json()
+            order_ids = data.get('order_ids', [])
+        else:
+            order_ids = request.form.getlist('order_ids[]')
+        
+        if not order_ids:
+            return jsonify({'success': False, 'error': '请选择要删除的订单'})
+        
+        success_count = 0
+        error_count = 0
+        
         for order_id in order_ids:
-            order = Order.query.get(order_id)
-            if order:
-                # 删除关联的图片文件
-                for image in order.images:
-                    try:
-                        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], image.image_path.replace('uploads/', ''))
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                    except Exception as e:
-                        current_app.logger.error(f"删除图片文件失败: {e}")
-                
-                db.session.delete(order)
-                deleted_count += 1
+            try:
+                order = Order.query.get(int(order_id))
+                if order:
+                    # 删除相关图片
+                    for image in order.images:
+                        try:
+                            image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], image.image_path.replace('uploads/', ''))
+                            if os.path.exists(image_path):
+                                os.remove(image_path)
+                        except Exception as e:
+                            print(f"删除图片失败: {e}")
+                            pass
+                        db.session.delete(image)
+                    
+                    db.session.delete(order)
+                    success_count += 1
+                else:
+                    error_count += 1
+            except Exception as e:
+                error_count += 1
+                print(f"删除订单 {order_id} 失败: {e}")
         
         db.session.commit()
+        
         return jsonify({
             'success': True,
-            'message': f'成功删除了 {deleted_count} 个订单'
+            'message': f'批量删除完成！成功：{success_count}条，失败：{error_count}条'
         })
+        
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'批量删除失败: {str(e)}'}), 500
-
+        return jsonify({'success': False, 'message': f'批量删除失败：{str(e)}'})
 
 @main.route('/backup/database', methods=['POST'])
 @login_required
@@ -1303,41 +1456,31 @@ def batch_delete_orders():
 def backup_database():
     """备份数据库"""
     try:
-        # 获取当前时间戳
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        import shutil
+        from datetime import datetime
         
-        # 获取当前数据库文件路径
-        database_uri = current_app.config['SQLALCHEMY_DATABASE_URI']
-        if database_uri.startswith('sqlite:///'):
-            db_path = database_uri.replace('sqlite:///', '')
-        else:
-            return jsonify({'error': '只支持SQLite数据库备份'}), 400
-        
-        # 检查数据库文件是否存在
+        # 数据库文件路径
+        db_path = current_app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
         if not os.path.exists(db_path):
-            return jsonify({'error': '数据库文件不存在'}), 404
+            return jsonify({'success': False, 'message': '数据库文件不存在'})
         
-        # 创建备份文件名
-        db_dir = os.path.dirname(db_path)
-        db_name = os.path.splitext(os.path.basename(db_path))[0]
-        backup_filename = f"{db_name}_{timestamp}.sqlite"
-        backup_path = os.path.join(db_dir, backup_filename)
+        # 创建备份目录
+        backup_dir = os.path.join(current_app.root_path, '..', 'backups')
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        # 生成备份文件名
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_filename = f'data_backup_{timestamp}.sqlite'
+        backup_path = os.path.join(backup_dir, backup_filename)
         
         # 复制数据库文件
         shutil.copy2(db_path, backup_path)
         
-        # 检查备份文件是否创建成功
-        if os.path.exists(backup_path):
-            backup_size = os.path.getsize(backup_path)
-            return jsonify({
-                'success': True,
-                'message': f'数据库备份成功',
-                'backup_file': backup_filename,
-                'backup_size': f'{backup_size / 1024:.2f} KB',
-                'timestamp': timestamp
-            })
-        else:
-            return jsonify({'error': '备份文件创建失败'}), 500
-            
+        return jsonify({
+            'success': True,
+            'message': f'数据库备份成功！备份文件：{backup_filename}',
+            'backup_path': backup_path
+        })
+        
     except Exception as e:
-        return jsonify({'error': f'备份失败: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': f'备份失败：{str(e)}'})

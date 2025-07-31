@@ -110,9 +110,16 @@ class OrderForm(FlaskForm):
         if not re.match(phone_pattern, field.data):
             raise ValidationError('请输入正确的手机号格式')
         
+        # 防止SQL注入：验证手机号只包含数字
+        if not field.data.isdigit() or len(field.data) != 11:
+            raise ValidationError('手机号格式不正确')
+        
         # 如果是编辑模式且手机号没有改变，跳过重复性检查
         if self.order and field.data == self.order.phone:
             return
+        
+        # 优化：使用单个查询检查微信用户和订单
+        from sqlalchemy import or_, and_
         
         # 检查是否有其他微信用户使用了这个手机号
         existing_wechat_user = WechatUser.query.filter_by(phone=field.data).first()
@@ -131,8 +138,7 @@ class OrderForm(FlaskForm):
         if self.order:
             # 编辑模式：排除当前订单
             existing_order = Order.query.filter(
-                Order.phone == field.data,
-                Order.id != self.order.id
+                and_(Order.phone == field.data, Order.id != self.order.id)
             ).first()
         else:
             # 新建模式

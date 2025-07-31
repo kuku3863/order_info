@@ -101,7 +101,7 @@ class OrderField(db.Model):
     __tablename__ = 'order_fields'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), unique=True)
-    field_type = db.Column(db.String(32))  # text, number, date, image
+    field_type = db.Column(db.String(32))  # text, number, date, image, select
     required = db.Column(db.Boolean, default=False)
     order = db.Column(db.Integer)  # 显示顺序
     is_default = db.Column(db.Boolean, default=False)  # 是否为默认字段
@@ -109,14 +109,14 @@ class OrderField(db.Model):
     @staticmethod
     def insert_default_fields():
         default_fields = [
-            {'name': '订单编码', 'field_type': 'text', 'required': True, 'order': 1, 'is_default': True},
-            {'name': '微信名', 'field_type': 'text', 'required': True, 'order': 2, 'is_default': True},
-            {'name': '微信号', 'field_type': 'text', 'required': True, 'order': 3, 'is_default': True},
-            {'name': '订单信息', 'field_type': 'text', 'required': True, 'order': 4, 'is_default': True},
-            {'name': '完成时间', 'field_type': 'date', 'required': True, 'order': 5, 'is_default': True},
-            {'name': '数量', 'field_type': 'number', 'required': True, 'order': 6, 'is_default': True},
-            {'name': '图片', 'field_type': 'image', 'required': False, 'order': 7, 'is_default': True},
-            {'name': '金额', 'field_type': 'number', 'required': False, 'order': 8, 'is_default': True}
+            {'name': 'wechat_name', 'field_type': 'text', 'required': True, 'order': 1, 'is_default': True},
+            {'name': 'wechat_id', 'field_type': 'text', 'required': False, 'order': 2, 'is_default': True},
+            {'name': 'phone', 'field_type': 'text', 'required': True, 'order': 3, 'is_default': True},
+            {'name': 'order_info', 'field_type': 'text', 'required': False, 'order': 4, 'is_default': True},
+            {'name': 'completion_time', 'field_type': 'date', 'required': False, 'order': 5, 'is_default': True},
+            {'name': 'quantity', 'field_type': 'number', 'required': False, 'order': 6, 'is_default': True},
+            {'name': 'amount', 'field_type': 'number', 'required': False, 'order': 7, 'is_default': True},
+            {'name': 'notes', 'field_type': 'text', 'required': False, 'order': 8, 'is_default': True}
         ]
         
         for field_data in default_fields:
@@ -124,7 +124,11 @@ class OrderField(db.Model):
             if field is None:
                 field = OrderField(**field_data)
                 db.session.add(field)
+        
         db.session.commit()
+    
+    def __repr__(self):
+        return f'<OrderField {self.name}>'
 
 class OrderType(db.Model):
     __tablename__ = 'order_types'
@@ -138,11 +142,11 @@ class OrderType(db.Model):
     @staticmethod
     def insert_default_types():
         default_types = [
-            {'name': '灯箱', 'description': '灯箱制作订单'},
-            {'name': '海报', 'description': '海报设计制作订单'},
-            {'name': '三折页', 'description': '三折页宣传册订单'},
-            {'name': '详情页', 'description': '详情页设计订单'},
-            {'name': '其他', 'description': '其他类型订单'}
+            {'name': '标准订单', 'description': '标准订单类型'},
+            {'name': '优惠订单', 'description': '享受优惠的订单类型'},
+            {'name': '加急订单', 'description': '需要加急处理的订单类型'},
+            {'name': '特殊订单', 'description': '特殊要求的订单类型'},
+            {'name': '测试订单', 'description': '用于测试的订单类型'}
         ]
         
         for type_data in default_types:
@@ -150,6 +154,7 @@ class OrderType(db.Model):
             if order_type is None:
                 order_type = OrderType(**type_data)
                 db.session.add(order_type)
+        
         db.session.commit()
     
     def __repr__(self):
@@ -184,41 +189,55 @@ class Order(db.Model):
     custom_fields = db.Column(db.Text())
     
     def set_custom_field(self, field_name, value):
-        fields = {}
-        if self.custom_fields:
+        if self.custom_fields is None:
+            self.custom_fields = '{}'
+        try:
             fields = json.loads(self.custom_fields)
+        except (json.JSONDecodeError, TypeError):
+            fields = {}
+        
+        # 验证字段名和值
+        if not isinstance(field_name, str) or len(field_name) > 64:
+            raise ValueError("Invalid field name")
+        
+        # 限制值的长度和类型
+        if isinstance(value, str) and len(value) > 1000:
+            raise ValueError("Field value too long")
+        
         fields[field_name] = value
-        self.custom_fields = json.dumps(fields)
+        self.custom_fields = json.dumps(fields, ensure_ascii=False)
     
     def get_custom_field(self, field_name):
-        if not self.custom_fields:
+        if self.custom_fields is None:
             return None
-        fields = json.loads(self.custom_fields)
-        return fields.get(field_name)
+        try:
+            fields = json.loads(self.custom_fields)
+            return fields.get(field_name)
+        except (json.JSONDecodeError, TypeError):
+            return None
     
     def to_dict(self):
-        data = {
+        return {
             'id': self.id,
             'order_code': self.order_code,
             'wechat_name': self.wechat_name,
             'wechat_id': self.wechat_id,
+            'phone': self.phone,
             'order_info': self.order_info,
-            'completion_time': self.completion_time.strftime('%Y-%m-%d %H:%M:%S') if self.completion_time else None,
+            'completion_time': self.completion_time.isoformat() if self.completion_time else None,
             'quantity': self.quantity,
             'amount': self.amount,
-            'create_time': self.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'notes': self.notes,
+            'create_time': self.create_time.isoformat(),
             'user_id': self.user_id,
-            'username': self.creator.username if self.creator else None,
-            'images': [{'id': img.id, 'path': img.image_path} for img in self.images]
+            'order_type_id': self.order_type_id,
+            'status': self.status,
+            'creator': self.creator.username if self.creator else None,
+            'order_type': self.order_type.name if self.order_type else None
         }
-        
-        # 添加自定义字段
-        if self.custom_fields:
-            custom_data = json.loads(self.custom_fields)
-            for key, value in custom_data.items():
-                data[key] = value
-                
-        return data
+    
+    def __repr__(self):
+        return f'<Order {self.order_code}>'
 
 class WechatUser(db.Model):
     __tablename__ = 'wechat_users'
@@ -235,78 +254,46 @@ class WechatUser(db.Model):
     update_time = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def __repr__(self):
-        return f'<WechatUser {self.wechat_name}({self.wechat_id})>'
+        return f'<WechatUser {self.wechat_name}>'
     
     def get_orders(self, start_date=None, end_date=None, order_type_id=None):
-        """获取该微信用户的订单"""
-        # 以手机号为主要标识查找订单
-        if self.phone:
-            query = Order.query.filter_by(phone=self.phone)
-        else:
-            # 如果没有手机号，返回空查询
-            return []
+        """获取用户的订单"""
+        from sqlalchemy import and_
+        
+        query = Order.query.filter(Order.wechat_name == self.wechat_name)
         
         if start_date:
-            # 优先按完成时间筛选，如果完成时间为空则按创建时间筛选
-            query = query.filter(
-                db.or_(
-                    db.and_(Order.completion_time.isnot(None), Order.completion_time >= start_date),
-                    db.and_(Order.completion_time.is_(None), Order.create_time >= start_date)
-                )
-            )
+            query = query.filter(Order.create_time >= start_date)
         if end_date:
-            # 优先按完成时间筛选，如果完成时间为空则按创建时间筛选
-            query = query.filter(
-                db.or_(
-                    db.and_(Order.completion_time.isnot(None), Order.completion_time <= end_date),
-                    db.and_(Order.completion_time.is_(None), Order.create_time <= end_date)
-                )
-            )
+            query = query.filter(Order.create_time <= end_date)
         if order_type_id:
-            query = query.filter_by(order_type_id=order_type_id)
-            
-        return query.order_by(Order.completion_time.desc().nullslast(), Order.create_time.desc()).all()
+            query = query.filter(Order.order_type_id == order_type_id)
+        
+        return query.order_by(Order.create_time.desc()).all()
     
     def get_order_stats(self, start_date=None, end_date=None):
-        """获取该微信用户的订单统计"""
+        """获取用户订单统计"""
         from sqlalchemy import func
         
-        # 以手机号为主要标识查找订单
-        if self.phone:
-            query = Order.query.filter_by(phone=self.phone)
-        else:
-            # 如果没有手机号，返回空统计
-            return {
-                'total_orders': 0,
-                'total_amount': 0,
-                'avg_amount': 0
-            }
+        query = Order.query.filter(Order.wechat_name == self.wechat_name)
         
         if start_date:
-            # 优先按完成时间筛选，如果完成时间为空则按创建时间筛选
-            query = query.filter(
-                db.or_(
-                    db.and_(Order.completion_time.isnot(None), Order.completion_time >= start_date),
-                    db.and_(Order.completion_time.is_(None), Order.create_time >= start_date)
-                )
-            )
+            query = query.filter(Order.create_time >= start_date)
         if end_date:
-            # 优先按完成时间筛选，如果完成时间为空则按创建时间筛选
-            query = query.filter(
-                db.or_(
-                    db.and_(Order.completion_time.isnot(None), Order.completion_time <= end_date),
-                    db.and_(Order.completion_time.is_(None), Order.create_time <= end_date)
-                )
-            )
-            
-        total_orders = query.count()
-        total_amount = query.filter(Order.amount.isnot(None)).with_entities(func.sum(Order.amount)).scalar() or 0
-        avg_amount = query.filter(Order.amount.isnot(None)).with_entities(func.avg(Order.amount)).scalar() or 0
+            query = query.filter(Order.create_time <= end_date)
+        
+        stats = query.with_entities(
+            func.count(Order.id).label('total_orders'),
+            func.sum(Order.amount).label('total_amount'),
+            func.avg(Order.amount).label('avg_amount'),
+            func.sum(Order.quantity).label('total_quantity')
+        ).first()
         
         return {
-            'total_orders': total_orders,
-            'total_amount': total_amount,
-            'avg_amount': avg_amount
+            'total_orders': stats.total_orders or 0,
+            'total_amount': float(stats.total_amount or 0),
+            'avg_amount': float(stats.avg_amount or 0),
+            'total_quantity': stats.total_quantity or 0
         }
 
 @login_manager.user_loader

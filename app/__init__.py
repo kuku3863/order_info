@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_bootstrap import Bootstrap
@@ -23,11 +23,24 @@ def create_app(config_name):
     # 确保上传目录存在
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     
+    # 初始化数据库
     db.init_app(app)
     login_manager.init_app(app)
     bootstrap.init_app(app)
     migrate.init_app(app, db)
     csrf.init_app(app)
+    
+    # 初始化缓存系统
+    from .cache_manager import cache_manager
+    cache_manager.init_app(app)
+    
+    # 初始化API优化器
+    from .api_optimizer import api_optimizer
+    api_optimizer.init_app(app)
+    
+    # 初始化静态资源优化器
+    from .static_optimizer import static_optimizer
+    static_optimizer.init_app(app)
     
     # 注册蓝图
     from .main import main as main_blueprint
@@ -71,5 +84,25 @@ def create_app(config_name):
     def inject_now():
         from datetime import datetime
         return {'now': datetime.now()}
+    
+    # 注册性能监控
+    @app.before_request
+    def before_request():
+        """请求前处理"""
+        from flask import g
+        import time
+        g.start_time = time.time()
+    
+    @app.after_request
+    def after_request(response):
+        """请求后处理"""
+        from flask import g
+        if hasattr(g, 'start_time'):
+            import time
+            duration = time.time() - g.start_time
+            # 记录慢请求
+            if duration > 1.0:  # 超过1秒的请求
+                app.logger.warning(f"慢请求: {request.endpoint} 耗时 {duration:.2f}秒")
+        return response
     
     return app
