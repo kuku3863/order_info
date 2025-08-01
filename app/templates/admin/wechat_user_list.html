@@ -86,7 +86,7 @@
                                                 <i class="fas fa-edit"></i> 编辑
                                             </a>
                                             <button type="button" class="btn btn-danger text-white" 
-                                                    onclick="deleteWechatUser({{ wechat_user.id }}, '{{ wechat_user.wechat_name or '未知用户' }}')" 
+                                                    onclick="deleteWechatUser({{ wechat_user.id }}, {{ (wechat_user.wechat_name or '未知用户')|tojson }})"
                                                     title="删除">
                                                 <i class="fas fa-trash"></i> 删除
                                             </button>
