@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_field %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block page_content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-calculator"></i> 金额自动计算规则管理
+                    </h3>
+                    <div class="card-tools">
+                        <span class="badge badge-info">预留功能</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>功能说明：</strong>此功能用于配置订单金额的自动计算规则，支持根据用户等级、订单类型等因素自动计算订单金额。
+                    </div>
+                    
+                    <form id="rulesForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="base_rate">基础费率 (%)</label>
+                                    <input type="number" class="form-control" id="base_rate" 
+                                           value="{{ (rules.base_rate * 100)|round(2) }}" 
+                                           step="0.01" min="0" max="100">
+                                    <small class="form-text text-muted">普通用户的基础费率</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="vip_rate">VIP费率 (%)</label>
+                                    <input type="number" class="form-control" id="vip_rate" 
+                                           value="{{ (rules.vip_rate * 100)|round(2) }}" 
+                                           step="0.01" min="0" max="100">
+                                    <small class="form-text text-muted">VIP用户的费率</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="bulk_discount">批量折扣 (%)</label>
+                                    <input type="number" class="form-control" id="bulk_discount" 
+                                           value="{{ (rules.bulk_discount * 100)|round(2) }}" 
+                                           step="0.01" min="0" max="100">
+                                    <small class="form-text text-muted">批量订单的折扣率</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="min_amount">最小金额 (元)</label>
+                                    <input type="number" class="form-control" id="min_amount" 
+                                           value="{{ rules.min_amount }}" 
+                                           step="0.01" min="0">
+                                    <small class="form-text text-muted">订单的最小金额限制</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <button type="button" class="btn btn-primary" onclick="updateRules()">
+                                <i class="fas fa-save"></i> 保存规则
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="previewCalculation()">
+                                <i class="fas fa-eye"></i> 预览计算
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 计算预览区域 -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-chart-line"></i> 计算预览
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="preview_base">基础金额 (元)</label>
+                                <input type="number" class="form-control" id="preview_base" 
+                                       value="1000" step="0.01" min="0">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="preview_user_type">用户类型</label>
+                                <select class="form-control" id="preview_user_type">
+                                    <option value="normal">普通用户</option>
+                                    <option value="vip">VIP用户</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="preview_order_count">订单数量</label>
+                                <input type="number" class="form-control" id="preview_order_count" 
+                                       value="1" min="1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="preview_result" class="mt-3" style="display: none;">
+                        <div class="alert alert-success">
+                            <h5>计算结果：</h5>
+                            <div id="preview_details"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateRules() {
+    const rules = {
+        base_rate: parseFloat(document.getElementById('base_rate').value) / 100,
+        vip_rate: parseFloat(document.getElementById('vip_rate').value) / 100,
+        bulk_discount: parseFloat(document.getElementById('bulk_discount').value) / 100,
+        min_amount: parseFloat(document.getElementById('min_amount').value)
+    };
+    
+    fetch('{{ url_for("main.update_calculation_rules") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        },
+        body: JSON.stringify(rules)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', '更新失败：' + error.message);
+    });
+}
+
+function previewCalculation() {
+    const orderData = {
+        base_amount: parseFloat(document.getElementById('preview_base').value),
+        user_type: document.getElementById('preview_user_type').value,
+        order_count: parseInt(document.getElementById('preview_order_count').value)
+    };
+    
+    fetch('{{ url_for("main.calculation_preview") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        },
+        body: JSON.stringify(orderData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayPreviewResult(data.preview);
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', '预览失败：' + error.message);
+    });
+}
+
+function displayPreviewResult(preview) {
+    const resultDiv = document.getElementById('preview_result');
+    const detailsDiv = document.getElementById('preview_details');
+    
+    detailsDiv.innerHTML = `
+        <p><strong>基础金额：</strong>¥${preview.base_amount}</p>
+        <p><strong>应用费率：</strong>${(preview.applied_rate * 100).toFixed(2)}%</p>
+        <p><strong>折扣金额：</strong>¥${preview.discounts}</p>
+        <p><strong>最终金额：</strong><span class="text-success font-weight-bold">¥${preview.final_amount}</span></p>
+    `;
+    
+    resultDiv.style.display = 'block';
+}
+
+function showAlert(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span>&times;</span>
+            </button>
+        </div>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // 3秒后自动消失
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            alert.remove();
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}

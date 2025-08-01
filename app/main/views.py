@@ -585,15 +585,16 @@ def export_template():
     # 获取当前日期作为默认完成时间
     current_date = datetime.now().strftime('%Y-%m-%d')
     
-    # 模板数据 - 按页面列顺序排列，备注在最后
+    # 模板数据 - 按用户旧版本表头顺序排列
     template_data = {
-        '*订单编码': ['ORD20240101001'],
-        '*订单类型': ['海报'],
-        '*微信名': ['张三'],
-        '*手机号': ['13800138001'],
-        '*订单信息': ['制作海报，尺寸A4'],
-        '*完成时间': [current_date],
-        '*数量': [1],
+        '订单编码*': ['ORD20240101001'],
+        '订单类型': ['海报'],
+        '微信名*': ['张三'],
+        '微信号': [''],
+        '手机号': ['13800138001'],
+        '订单信息*': ['制作海报，尺寸A4'],
+        '完成时间*': [current_date],
+        '数量*': [1],
         '金额': [100.00],
         '备注': ['']
     }
@@ -612,33 +613,37 @@ def export_template():
     # 设置必填项列标题的星号为红色
     red_star = TextBlock(InlineFont(b=True, color="FF0000", sz=12), "*")
     
-    # A列：*订单编码
+    # A列：订单编码*
     white_text_a = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "订单编码")
-    ws1['A1'].value = CellRichText(red_star, white_text_a)
+    ws1['A1'].value = CellRichText(white_text_a, red_star)
     
-    # B列：*订单类型
-    white_text_b = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "订单类型")
-    ws1['B1'].value = CellRichText(red_star, white_text_b)
+    # B列：订单类型（无星号）
+    ws1['B1'].value = "订单类型"
+    ws1['B1'].font = Font(bold=True, color="FFFFFF", size=12, name="微软雅黑")
     
-    # C列：*微信名
+    # C列：微信名*
     white_text_c = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "微信名")
-    ws1['C1'].value = CellRichText(red_star, white_text_c)
+    ws1['C1'].value = CellRichText(white_text_c, red_star)
     
-    # D列：*手机号
-    white_text_d = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "手机号")
-    ws1['D1'].value = CellRichText(red_star, white_text_d)
+    # D列：微信号（无星号）
+    ws1['D1'].value = "微信号"
+    ws1['D1'].font = Font(bold=True, color="FFFFFF", size=12, name="微软雅黑")
     
-    # E列：*订单信息
-    white_text_e = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "订单信息")
-    ws1['E1'].value = CellRichText(red_star, white_text_e)
+    # E列：手机号（无星号）
+    ws1['E1'].value = "手机号"
+    ws1['E1'].font = Font(bold=True, color="FFFFFF", size=12, name="微软雅黑")
     
-    # F列：*完成时间
-    white_text_f = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "完成时间")
-    ws1['F1'].value = CellRichText(red_star, white_text_f)
+    # F列：订单信息*
+    white_text_f = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "订单信息")
+    ws1['F1'].value = CellRichText(white_text_f, red_star)
     
-    # G列：*数量
-    white_text_g = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "数量")
-    ws1['G1'].value = CellRichText(red_star, white_text_g)
+    # G列：完成时间*
+    white_text_g = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "完成时间")
+    ws1['G1'].value = CellRichText(white_text_g, red_star)
+    
+    # H列：数量*
+    white_text_h = TextBlock(InlineFont(b=True, color="FFFFFF", sz=12), "数量")
+    ws1['H1'].value = CellRichText(white_text_h, red_star)
     
     # 设置丰富的样式
     header_font = Font(bold=True, color="FFFFFF", size=12, name="微软雅黑")
@@ -676,15 +681,16 @@ def export_template():
     
     # 设置列宽
     column_widths = {
-        'A': 18,  # *订单编码
-        'B': 12,  # *订单类型
-        'C': 15,  # *微信名
-        'D': 15,  # *手机号
-        'E': 25,  # *订单信息
-        'F': 12,  # *完成时间
-        'G': 8,   # *数量
-        'H': 10,  # 金额
-        'I': 20   # 备注
+        'A': 18,  # 订单编码*
+        'B': 12,  # 订单类型
+        'C': 15,  # 微信名*
+        'D': 15,  # 微信号
+        'E': 15,  # 手机号
+        'F': 25,  # 订单信息*
+        'G': 12,  # 完成时间*
+        'H': 8,   # 数量*
+        'I': 10,  # 金额
+        'J': 20   # 备注
     }
     
     for col, width in column_widths.items():
@@ -1041,12 +1047,26 @@ def import_orders():
                     flash('文件内容为空，请检查文件是否正确', 'danger')
                     return redirect(request.url)
                 
-                # 检查必要的列是否存在
-                required_cols = ['*微信名', '*手机号', '*订单编码', '*订单信息', '*订单类型', '*完成时间', '*数量']
+                # 检查必要的列是否存在（支持新旧两种格式）
+                required_cols = ['微信名*', '订单编码*', '订单信息*', '完成时间*', '数量*']
+                old_required_cols = ['*微信名', '*手机号', '*订单编码', '*订单信息', '*订单类型', '*完成时间', '*数量']
                 missing_cols = []
+                
+                # 检查新格式（星号在后）
                 for col in required_cols:
                     if col not in df.columns and col.replace('*', '') not in df.columns:
-                        missing_cols.append(col)
+                        # 检查旧格式（星号在前）
+                        old_col = '*' + col.replace('*', '')
+                        if old_col not in df.columns:
+                            missing_cols.append(col)
+                
+                # 特殊处理手机号（新格式中不是必填）
+                if '手机号' not in df.columns and '*手机号' not in df.columns:
+                    missing_cols.append('手机号')
+                
+                # 特殊处理订单类型（新格式中不是必填）
+                if '订单类型' not in df.columns and '*订单类型' not in df.columns:
+                    missing_cols.append('订单类型')
                 
                 if missing_cols:
                     flash(f'文件缺少必要的列：{", ".join(missing_cols)}。请检查模板格式', 'danger')
@@ -1061,14 +1081,14 @@ def import_orders():
                 
                 for index, row in df.iterrows():
                     try:
-                        # 检查必填字段（支持带星号的列名）
-                        phone_col = '*手机号' if '*手机号' in df.columns else '手机号'
-                        wechat_col = '*微信名' if '*微信名' in df.columns else '微信名'
-                        order_code_col = '*订单编码' if '*订单编码' in df.columns else '订单编码'
-                        order_info_col = '*订单信息' if '*订单信息' in df.columns else '订单信息'
-                        order_type_col = '*订单类型' if '*订单类型' in df.columns else '订单类型'
-                        completion_time_col = '*完成时间' if '*完成时间' in df.columns else '完成时间'
-                        quantity_col = '*数量' if '*数量' in df.columns else '数量'
+                        # 检查必填字段（支持新旧两种星号格式）
+                        phone_col = '手机号' if '手机号' in df.columns else '*手机号' if '*手机号' in df.columns else '手机号'
+                        wechat_col = '微信名*' if '微信名*' in df.columns else '*微信名' if '*微信名' in df.columns else '微信名'
+                        order_code_col = '订单编码*' if '订单编码*' in df.columns else '*订单编码' if '*订单编码' in df.columns else '订单编码'
+                        order_info_col = '订单信息*' if '订单信息*' in df.columns else '*订单信息' if '*订单信息' in df.columns else '订单信息'
+                        order_type_col = '订单类型' if '订单类型' in df.columns else '*订单类型' if '*订单类型' in df.columns else '订单类型'
+                        completion_time_col = '完成时间*' if '完成时间*' in df.columns else '*完成时间' if '*完成时间' in df.columns else '完成时间'
+                        quantity_col = '数量*' if '数量*' in df.columns else '*数量' if '*数量' in df.columns else '数量'
                         
                         if pd.isna(row.get(phone_col)) or str(row.get(phone_col)).strip() == '':
                             errors.append(f"第{index+2}行：手机号不能为空")
@@ -1493,3 +1513,163 @@ def backup_database():
         
     except Exception as e:
         return jsonify({'success': False, 'error': f'备份失败：{str(e)}'})
+
+
+# ==================== 新增功能：金额自动计算 ====================
+
+@main.route('/calculation/rules')
+@login_required
+@admin_required
+def calculation_rules():
+    """金额计算规则管理页面"""
+    from ..calculation import calculator
+    
+    return render_template('main/calculation_rules.html', 
+                         rules=calculator.calculation_rules,
+                         title='金额计算规则')
+
+@main.route('/calculation/preview', methods=['POST'])
+@login_required
+def calculation_preview():
+    """金额计算预览"""
+    from ..calculation import calculator
+    
+    try:
+        order_data = request.get_json()
+        preview = calculator.get_calculation_preview(order_data)
+        return jsonify({'success': True, 'preview': preview})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@main.route('/calculation/update_rules', methods=['POST'])
+@login_required
+@admin_required
+def update_calculation_rules():
+    """更新计算规则"""
+    from ..calculation import calculator
+    
+    try:
+        new_rules = request.get_json()
+        calculator.update_calculation_rules(new_rules)
+        return jsonify({'success': True, 'message': '规则更新成功'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@main.route('/order/calculate_amount/<int:order_id>', methods=['POST'])
+@login_required
+def calculate_order_amount(order_id):
+    """自动计算订单金额"""
+    from ..calculation import calculator
+    
+    try:
+        order = Order.query.get_or_404(order_id)
+        calculated_amount = calculator.calculate_order_amount(order_id)
+        
+        # TODO: 更新订单金额
+        # order.amount = calculated_amount
+        # db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'amount': float(calculated_amount),
+            'message': '金额计算完成（预留功能）'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+# ==================== 新增功能：一键转账 ====================
+
+@main.route('/payment/batch')
+@login_required
+@admin_required
+def batch_payment():
+    """批量转账管理页面"""
+    return render_template('main/batch_payment.html', title='一键转账')
+
+@main.route('/payment/calculate', methods=['POST'])
+@login_required
+@admin_required
+def calculate_payments():
+    """计算用户应得金额"""
+    from ..payment import payment_processor
+    
+    try:
+        conditions = request.get_json()
+        payment_list = payment_processor.calculate_user_payments(conditions)
+        return jsonify({'success': True, 'payments': payment_list})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@main.route('/payment/prepare_batch', methods=['POST'])
+@login_required
+@admin_required
+def prepare_payment_batch():
+    """准备支付批次"""
+    from ..payment import payment_processor
+    
+    try:
+        payment_list = request.get_json().get('payments', [])
+        batch_info = payment_processor.generate_payment_batch(payment_list)
+        transfer_data = payment_processor.prepare_wechat_transfer_data(payment_list)
+        
+        return jsonify({
+            'success': True, 
+            'batch_info': batch_info,
+            'transfer_count': len(transfer_data),
+            'message': '批次准备完成（预留功能）'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@main.route('/payment/execute_batch', methods=['POST'])
+@login_required
+@admin_required
+def execute_payment_batch():
+    """执行批量转账"""
+    from ..payment import payment_processor
+    
+    try:
+        batch_data = request.get_json()
+        batch_id = batch_data.get('batch_id')
+        transfer_data = batch_data.get('transfer_data', [])
+        
+        # TODO: 实际执行转账逻辑
+        results = payment_processor.execute_batch_transfer(batch_id, transfer_data)
+        
+        return jsonify({
+            'success': True, 
+            'results': results,
+            'message': '转账执行完成（预留功能）'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@main.route('/payment/status/<batch_id>')
+@login_required
+@admin_required
+def payment_status(batch_id):
+    """查询转账状态"""
+    from ..payment import payment_processor
+    
+    try:
+        status = payment_processor.get_transfer_status(batch_id)
+        return jsonify({'success': True, 'status': status})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@main.route('/payment/report/<batch_id>')
+@login_required
+@admin_required
+def payment_report(batch_id):
+    """生成支付报告"""
+    from ..payment import payment_processor
+    
+    try:
+        report = payment_processor.generate_payment_report(batch_id)
+        return render_template('main/payment_report.html', 
+                             report=report, 
+                             title='支付报告')
+    except Exception as e:
+        flash(f'生成报告失败：{str(e)}', 'error')
+        return redirect(url_for('main.batch_payment'))

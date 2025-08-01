@@ -31,10 +31,20 @@ def install_dependencies():
 
 def create_upload_folder():
     """创建上传文件夹"""
-    upload_path = Path(r'D:\订单查询系统\图片')
+    base_path = Path('static/uploads')
+    folders = ['orders', 'avatars', 'qr_codes']
+    
     try:
-        upload_path.mkdir(parents=True, exist_ok=True)
-        print(f"✓ 创建上传文件夹: {upload_path}")
+        # 创建基础上传目录
+        base_path.mkdir(parents=True, exist_ok=True)
+        print(f"✓ 创建基础上传文件夹: {base_path}")
+        
+        # 创建各类型图片的子文件夹
+        for folder in folders:
+            folder_path = base_path / folder
+            folder_path.mkdir(exist_ok=True)
+            print(f"✓ 创建子文件夹: {folder_path}")
+        
         return True
     except Exception as e:
         print(f"❌ 创建上传文件夹失败: {e}")

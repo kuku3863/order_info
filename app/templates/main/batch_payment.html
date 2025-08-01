@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_field %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block page_content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-money-bill-wave"></i> 一键转账管理
+                    </h3>
+                    <div class="card-tools">
+                        <span class="badge badge-warning">预留功能</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>功能说明：</strong>此功能用于批量计算用户应得金额并执行微信转账，支持按条件筛选订单、自动计算佣金、一键发放工资等。
+                    </div>
+                    
+                    <!-- 筛选条件 -->
+                    <div class="row">
+                        <div class="col-md-12">
+                            <h5><i class="fas fa-filter"></i> 筛选条件</h5>
+                            <form id="filterForm">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label for="start_date">开始日期</label>
+                                            <input type="date" class="form-control" id="start_date">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label for="end_date">结束日期</label>
+                                            <input type="date" class="form-control" id="end_date">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label for="order_status">订单状态</label>
+                                            <select class="form-control" id="order_status">
+                                                <option value="">全部</option>
+                                                <option value="已完成">已完成</option>
+                                                <option value="未完成">未完成</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label for="settlement_status">结算状态</label>
+                                            <select class="form-control" id="settlement_status">
+                                                <option value="">全部</option>
+                                                <option value="未结算">未结算</option>
+                                                <option value="已结算">已结算</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <button type="button" class="btn btn-primary" onclick="calculatePayments()">
+                                        <i class="fas fa-calculator"></i> 计算金额
+                                    </button>
+                                    <button type="button" class="btn btn-info" onclick="refreshData()">
+                                        <i class="fas fa-sync"></i> 刷新
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- 计算结果 -->
+                    <div id="payment_results" style="display: none;">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <h5><i class="fas fa-list"></i> 计算结果</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-striped" id="payment_table">
+                                        <thead>
+                                            <tr>
+                                                <th><input type="checkbox" id="select_all"></th>
+                                                <th>用户ID</th>
+                                                <th>微信名</th>
+                                                <th>订单数量</th>
+                                                <th>总金额</th>
+                                                <th>扣除金额</th>
+                                                <th>应得金额</th>
+                                                <th>状态</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="payment_tbody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="info-box bg-info">
+                                                <span class="info-box-icon"><i class="fas fa-users"></i></span>
+                                                <div class="info-box-content">
+                                                    <span class="info-box-text">选中用户</span>
+                                                    <span class="info-box-number" id="selected_count">0</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="info-box bg-success">
+                                                <span class="info-box-icon"><i class="fas fa-money-bill"></i></span>
+                                                <div class="info-box-content">
+                                                    <span class="info-box-text">总转账金额</span>
+                                                    <span class="info-box-number" id="total_amount">¥0.00</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <button type="button" class="btn btn-warning" onclick="prepareBatch()">
+                                        <i class="fas fa-cog"></i> 准备批次
+                                    </button>
+                                    <button type="button" class="btn btn-success" onclick="executeBatch()" disabled id="execute_btn">
+                                        <i class="fas fa-paper-plane"></i> 执行转账
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 批次信息 -->
+                    <div id="batch_info" style="display: none;">
+                        <hr>
+                        <h5><i class="fas fa-info-circle"></i> 批次信息</h5>
+                        <div id="batch_details"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 转账历史 -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-history"></i> 转账历史
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>批次ID</th>
+                                    <th>创建时间</th>
+                                    <th>用户数量</th>
+                                    <th>总金额</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">暂无转账记录</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPayments = [];
+let currentBatchId = null;
+
+function calculatePayments() {
+    const conditions = {
+        start_date: document.getElementById('start_date').value,
+        end_date: document.getElementById('end_date').value,
+        order_status: document.getElementById('order_status').value,
+        settlement_status: document.getElementById('settlement_status').value
+    };
+    
+    fetch('{{ url_for("main.calculate_payments") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        },
+        body: JSON.stringify(conditions)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentPayments = data.payments;
+            displayPayments(data.payments);
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', '计算失败：' + error.message);
+    });
+}
+
+function displayPayments(payments) {
+    const tbody = document.getElementById('payment_tbody');
+    tbody.innerHTML = '';
+    
+    payments.forEach((payment, index) => {
+        const row = `
+            <tr>
+                <td><input type="checkbox" class="payment-checkbox" data-index="${index}"></td>
+                <td>${payment.user_id}</td>
+                <td>${payment.wechat_name}</td>
+                <td>${payment.total_orders}</td>
+                <td>¥${payment.total_amount.toFixed(2)}</td>
+                <td>¥${payment.deductions.toFixed(2)}</td>
+                <td>¥${payment.final_amount.toFixed(2)}</td>
+                <td><span class="badge badge-${payment.payment_status === 'pending' ? 'warning' : 'success'}">${payment.payment_status}</span></td>
+            </tr>
+        `;
+        tbody.innerHTML += row;
+    });
+    
+    document.getElementById('payment_results').style.display = 'block';
+    updateSummary();
+}
+
+function prepareBatch() {
+    const selectedPayments = getSelectedPayments();
+    
+    if (selectedPayments.length === 0) {
+        showAlert('warning', '请选择要转账的用户');
+        return;
+    }
+    
+    fetch('{{ url_for("main.prepare_payment_batch") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        },
+        body: JSON.stringify({payments: selectedPayments})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentBatchId = data.batch_info.batch_id;
+            displayBatchInfo(data.batch_info);
+            document.getElementById('execute_btn').disabled = false;
+            showAlert('success', data.message);
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', '准备失败：' + error.message);
+    });
+}
+
+function executeBatch() {
+    if (!currentBatchId) {
+        showAlert('error', '请先准备批次');
+        return;
+    }
+    
+    if (!confirm('确定要执行转账吗？此操作不可撤销！')) {
+        return;
+    }
+    
+    const selectedPayments = getSelectedPayments();
+    
+    fetch('{{ url_for("main.execute_payment_batch") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        },
+        body: JSON.stringify({
+            batch_id: currentBatchId,
+            transfer_data: selectedPayments
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            // 可以添加进度监控
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', '执行失败：' + error.message);
+    });
+}
+
+function getSelectedPayments() {
+    const checkboxes = document.querySelectorAll('.payment-checkbox:checked');
+    const selected = [];
+    
+    checkboxes.forEach(checkbox => {
+        const index = parseInt(checkbox.dataset.index);
+        selected.push(currentPayments[index]);
+    });
+    
+    return selected;
+}
+
+function displayBatchInfo(batchInfo) {
+    const detailsDiv = document.getElementById('batch_details');
+    detailsDiv.innerHTML = `
+        <div class="alert alert-info">
+            <p><strong>批次ID：</strong>${batchInfo.batch_id}</p>
+            <p><strong>用户数量：</strong>${batchInfo.total_users}</p>
+            <p><strong>总金额：</strong>¥${batchInfo.total_amount.toFixed(2)}</p>
+            <p><strong>创建时间：</strong>${new Date(batchInfo.created_at).toLocaleString()}</p>
+            <p><strong>状态：</strong><span class="badge badge-primary">${batchInfo.status}</span></p>
+        </div>
+    `;
+    
+    document.getElementById('batch_info').style.display = 'block';
+}
+
+function updateSummary() {
+    const checkboxes = document.querySelectorAll('.payment-checkbox:checked');
+    let totalAmount = 0;
+    
+    checkboxes.forEach(checkbox => {
+        const index = parseInt(checkbox.dataset.index);
+        totalAmount += currentPayments[index].final_amount;
+    });
+    
+    document.getElementById('selected_count').textContent = checkboxes.length;
+    document.getElementById('total_amount').textContent = `¥${totalAmount.toFixed(2)}`;
+}
+
+function refreshData() {
+    document.getElementById('payment_results').style.display = 'none';
+    document.getElementById('batch_info').style.display = 'none';
+    currentPayments = [];
+    currentBatchId = null;
+    document.getElementById('execute_btn').disabled = true;
+}
+
+function showAlert(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 
+                      type === 'warning' ? 'alert-warning' : 'alert-danger';
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span>&times;</span>
+            </button>
+        </div>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            alert.remove();
+        }
+    }, 3000);
+}
+
+// 全选功能
+document.getElementById('select_all').addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('.payment-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = this.checked;
+    });
+    updateSummary();
+});
+
+// 监听单个复选框变化
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('payment-checkbox')) {
+        updateSummary();
+    }
+});
+
+// 设置默认日期
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date();
+    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+    
+    document.getElementById('start_date').value = lastMonth.toISOString().split('T')[0];
+    document.getElementById('end_date').value = today.toISOString().split('T')[0];
+});
+</script>
+{% endblock %}

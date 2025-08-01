@@ -30,17 +30,9 @@ def create_app(config_name):
     migrate.init_app(app, db)
     csrf.init_app(app)
     
-    # 初始化缓存系统
-    from .cache_manager import cache_manager
-    cache_manager.init_app(app)
+    # 缓存和API优化功能已移除，保持代码简洁
     
-    # 初始化API优化器
-    from .api_optimizer import api_optimizer
-    api_optimizer.init_app(app)
-    
-    # 初始化静态资源优化器
-    from .static_optimizer import static_optimizer
-    static_optimizer.init_app(app)
+    # 静态资源优化功能已移除
     
     # 注册蓝图
     from .main import main as main_blueprint
