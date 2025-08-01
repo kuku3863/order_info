@@ -13,7 +13,8 @@
                          <form method="POST" action="{{ url_for('admin.collect_wechat_users') }}" class="d-inline me-2" id="collectForm">
                              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                              <button type="submit" class="btn btn-warning btn-sm" id="collectBtn"
-                                     onclick="return handleCollectSubmit(event, {{ uncollected_count|default(0) }})">
+                                     data-count="{{ uncollected_count or 0 }}"
+                                     onclick="return handleCollectSubmit(event, this.dataset.count)">
                                  <i class="fas fa-download"></i> 收集微信用户 ({{ uncollected_count }})
                              </button>
                          </form>
@@ -86,7 +87,9 @@
                                                 <i class="fas fa-edit"></i> 编辑
                                             </a>
                                             <button type="button" class="btn btn-danger text-white" 
-                                                    onclick="deleteWechatUser({{ wechat_user.id }}, {{ (wechat_user.wechat_name or '未知用户')|tojson }})"
+                                                    data-user-id="{{ wechat_user.id }}"
+                                                    data-user-name="{{ wechat_user.wechat_name or '未知用户' }}"
+                                                    onclick="deleteWechatUser(this.dataset.userId, this.dataset.userName)"
                                                     title="删除">
                                                 <i class="fas fa-trash"></i> 删除
                                             </button>
